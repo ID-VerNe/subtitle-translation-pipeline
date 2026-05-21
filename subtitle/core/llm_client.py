@@ -403,3 +403,22 @@ def reset_session_pool():
     _session_pool.clear()
     _balancer_pool.clear()
     logger.info("Session pool reset")
+
+
+async def close_session_pool():
+    """彻底关闭会话池中的所有会话"""
+    global _session_pool, _balancer_pool
+    
+    # 首先关闭负载均衡器 (这会关闭关联的任务协程和子会话)
+    for balancer in list(_balancer_pool.values()):
+        if hasattr(balancer, "__aexit__"):
+            await balancer.__aexit__(None, None, None)
+    
+    # 然后关闭任何未通过负载均衡器管理的独立会话
+    for session in list(_session_pool.values()):
+        if hasattr(session, "__aexit__"):
+            await session.__aexit__(None, None, None)
+            
+    _balancer_pool.clear()
+    _session_pool.clear()
+    logger.info("Session pool closed and cleared")

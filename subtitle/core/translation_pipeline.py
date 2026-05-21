@@ -10,8 +10,46 @@ from tqdm import tqdm
 from .llm_client import call_llm, call_llm_batch, clean_and_extract_json, get_load_balancer_stats
 from .prompts import get_prompt_templates
 from .glossary_manager import glossary_manager
+from .cache_utils import canonical_json
 
 logger = logging.getLogger(__name__)
+
+def build_recent_state(final_blocks: List[Dict], max_lines: int = 2) -> Dict:
+    """
+    构建极小动态上下文，替代上一批完整 原文 -> 译文 回灌。
+    只保留最近 1-2 行，用于解决紧邻代词、省略、语气延续。
+    """
+    if not final_blocks:
+        return {}
+
+    recent = final_blocks[-max_lines:]
+
+    return {
+        "last_ids": [int(b["index"]) for b in recent if str(b.get("index", "")).isdigit()],
+        "last_translations": [b.get("polished", "") for b in recent],
+        "usage": "Only use this for immediate pronoun resolution or sentence continuation."
+    }
+
+
+def build_core_terms(full_glossary: Dict[str, dict], limit: int = 80) -> Dict[str, dict]:
+    """
+    构建全片稳定核心术语。
+    简化版：先取前 limit 个。
+    后续可以按频率、category、人工标记优化。
+    """
+    items = list(full_glossary.items())[:limit]
+    return {
+        src: info
+        for src, info in items
+    }
+
+
+def build_glossary_payload(core_terms: Dict[str, dict], local_terms: Dict[str, dict]) -> str:
+    payload = {
+        "core_terms": core_terms,
+        "local_terms": local_terms
+    }
+    return canonical_json(payload)
 
 def filter_relevant_glossary(text_content: str, full_glossary: Dict[str, dict]) -> Dict[str, dict]:
     relevant = {}
@@ -179,16 +217,17 @@ async def extract_global_terms(config, blocks: List[Dict]) -> Dict[str, dict]:
     print(f"  ✅ 最终术语表包含 {len(final_glossary)} 条目")
     return final_glossary
 
-async def _do_single_request(stage: str, sub_blocks: List[Dict], config, glossary_text: str, use_context: bool, **kwargs) -> List[Dict]:
+async def _do_single_request(stage: str, sub_blocks: List[Dict], config, core_glossary_text: str, local_glossary_text: str, use_context: bool, **kwargs) -> List[Dict]:
     """执行单次 API 请求并进行严格的 ID 校验"""
     templates = get_prompt_templates(config.target_lang)
     expected_ids = {int(b['index']) for b in sub_blocks}
 
     if stage == "literal":
         input_data = [{"id": int(b['index']), "text": b['content']} for b in sub_blocks]
-        g_text = glossary_text if use_context else "{}"
+        c_text = core_glossary_text if use_context else "{}"
+        l_text = local_glossary_text if use_context else "{}"
         msgs = [{"role": "user", "content": templates["LITERAL_TRANS"].format(
-            glossary=g_text, json_input=json.dumps(input_data, ensure_ascii=False)
+            core_glossary=c_text, local_glossary=l_text, json_input=canonical_json(input_data)
         )}]
         
         tools = [{
@@ -229,11 +268,16 @@ async def _do_single_request(stage: str, sub_blocks: List[Dict], config, glossar
         
         ctx = kwargs.get('previous_context', "None") if use_context else "None"
         f_ctx = kwargs.get('future_context', "None") if use_context else "None"
-        g_text = glossary_text if use_context else "{}"
+        c_text = core_glossary_text if use_context else "{}"
+        l_text = local_glossary_text if use_context else "{}"
 
         msgs = [{"role": "user", "content": templates["REVIEW_AND_POLISH"].format(
-            glossary=g_text, 
-            json_input=json.dumps(polish_input, ensure_ascii=False),
+            core_glossary=c_text, 
+            local_glossary=l_text,
+            global_profile=kwargs.get("global_profile", "{}"),
+            translation_policy=kwargs.get("translation_policy", "{}"),
+            scene_guidance=kwargs.get("scene_guidance", "{}"),
+            json_input=canonical_json(polish_input),
             previous_context=ctx,
             future_context=f_ctx
         )}]
@@ -269,77 +313,99 @@ async def _do_single_request(stage: str, sub_blocks: List[Dict], config, glossar
         else:
             res = data
 
+    # 规范化结果格式
     if not isinstance(res, list):
         return None
 
-    if len(res) != len(sub_blocks):
-        logger.warning(f"[{stage.upper()}] 长度不匹配: 期望 {len(sub_blocks)}, 实际 {len(res)}。")
-        return None
-
-    returned_ids = set()
+    final_res = []
     for item in res:
         if not isinstance(item, dict) or 'id' not in item:
-            return None
-        try:
-            returned_ids.add(int(item['id']))
-        except (ValueError, TypeError):
-            return None
+            continue
+        
+        # 鲁棒性提取：兼容多种可能的键名
+        translated_text = ""
+        if stage == "literal":
+            translated_text = item.get("trans") or item.get("translation") or item.get("target") or item.get("text") or ""
+        else:
+            translated_text = item.get("polished") or item.get("translation") or item.get("target") or item.get("text") or ""
+            
+        final_res.append({
+            "id": int(item["id"]),
+            "trans" if stage == "literal" else "polished": translated_text
+        })
 
+    if len(final_res) != len(sub_blocks):
+        logger.warning(f"[{stage.upper()}] 长度或格式不匹配: 期望 {len(sub_blocks)}, 实际 {len(final_res)}。")
+        return None
+
+    returned_ids = {item["id"] for item in final_res}
     if returned_ids != expected_ids:
         logger.warning(f"[{stage.upper()}] ID 不匹配。")
         return None
 
     if stage == "polish":
         id_to_original = {int(b['index']): b['content'] for b in sub_blocks}
-        for item in res:
-            item['original'] = id_to_original.get(int(item['id']), "")
+        for item in final_res:
+            item['original'] = id_to_original.get(item['id'], "")
 
-    return res
+    return final_res
 
-async def ladder_rescue_engine(blocks: List[Dict], config, glossary_text: str, stage: str, **kwargs) -> List[Dict]:
-    """梯次拯救引擎：8 -> 6 -> 4 -> 2 -> 1，支持动态上下文维护"""
-    ladder = [8, 6, 4, 2, 1]
+async def ladder_rescue_engine(blocks: List[Dict], config, core_glossary_text: str, local_glossary_text: str, stage: str, **kwargs) -> List[Dict]:
+    """梯次拯救引擎：动态适配输入大小 + 三级环境剥离策略"""
+    input_size = len(blocks)
+    base_ladder = [input_size, 12, 10, 8, 6, 4, 2, 1]
+    ladder = sorted(list(set(base_ladder)), reverse=True)
+    
     results = []
-    running_context = kwargs.get('previous_context', "None")
+    # 记录原始动态上下文
+    original_context = kwargs.get('previous_context', "None")
+    original_future = kwargs.get('future_context', "None")
+    original_scene = kwargs.get('scene_guidance', "{}")
     
     idx = 0
     while idx < len(blocks):
         success = False
         remaining = len(blocks) - idx
+        # 仅尝试小于等于剩余数量的尺寸
+        available_sizes = [s for s in ladder if s <= remaining]
         
-        for size in [s for s in ladder if s <= remaining]:
+        for size in available_sizes:
             chunk = blocks[idx:idx+size]
-            current_kwargs = {**kwargs, 'previous_context': running_context}
             
-            for _ in range(2):
-                res = await _do_single_request(stage, chunk, config, glossary_text, use_context=True, **current_kwargs)
-                if res:
-                    results.extend(res)
-                    if stage == "polish":
-                        new_context_lines = [f"- {item.get('original', '')} -> {item.get('polished', '')}" for item in res]
-                        if running_context == "None":
-                            running_context = "\n".join(new_context_lines)
-                        else:
-                            running_context += "\n" + "\n".join(new_context_lines)
-                    idx += size
-                    success = True
-                    break
-            if success: break
+            # --- 拯救梯次策略 ---
             
-            res = await _do_single_request(stage, chunk, config, glossary_text, use_context=False, **current_kwargs)
+            # TIER 1: 完整上下文 (最强理解力)
+            t1_kwargs = {**kwargs, 'previous_context': original_context, 'future_context': original_future, 'scene_guidance': original_scene}
+            res = await _do_single_request(stage, chunk, config, core_glossary_text, local_glossary_text, use_context=True, **t1_kwargs)
             if res:
                 results.extend(res)
-                if stage == "polish":
-                    new_context_lines = [f"- {item.get('original', '')} -> {item.get('polished', '')}" for item in res]
-                    if running_context == "None":
-                        running_context = "\n".join(new_context_lines)
-                    else:
-                        running_context += "\n" + "\n".join(new_context_lines)
                 idx += size
                 success = True
                 break
-        
+                
+            # TIER 2: 剥离近场动态记忆，保留场景摘要 (中等理解力，更高稳定性)
+            t2_kwargs = dict(t1_kwargs)
+            t2_kwargs["previous_context"] = "None"
+            t2_kwargs["future_context"] = "None"
+            res = await _do_single_request(stage, chunk, config, core_glossary_text, local_glossary_text, use_context=False, **t2_kwargs)
+            if res:
+                results.extend(res)
+                idx += size
+                success = True
+                break
+            
+            # TIER 3: 剥离场景摘要，仅保留全局画像、策略与核心术语 (极简模式，最大成功率)
+            t3_kwargs = dict(t2_kwargs)
+            t3_kwargs["scene_guidance"] = "{}"
+            res = await _do_single_request(stage, chunk, config, core_glossary_text, local_glossary_text, use_context=False, **t3_kwargs)
+            if res:
+                results.extend(res)
+                idx += size
+                success = True
+                break
+                
         if not success:
+            # 彻底失败：保底逻辑 (返回原文)
             bad_block = blocks[idx]
             if stage == "literal":
                 res_item = {"id": int(bad_block['index']), "trans": bad_block['content']}
@@ -348,22 +414,28 @@ async def ladder_rescue_engine(blocks: List[Dict], config, glossary_text: str, s
                 lit = kwargs.get('literal_map', {}).get(str(bad_block['index']), bad_block['content'])
                 res_item = {"id": int(bad_block['index']), "polished": lit}
                 results.append(res_item)
-                new_line = f"- {bad_block['content']} -> {res_item['polished']}"
-                if running_context == "None":
-                    running_context = new_line
-                else:
-                    running_context += "\n" + new_line
             idx += 1
             
     return results
 
-async def process_literal_stage(batch_blocks: List[Dict], config, glossary: Dict[str, str]) -> Tuple[Dict[str, str], str]:
+async def process_literal_stage(batch_blocks: List[Dict], config, glossary: Dict[str, str], core_glossary_text: str = "{}") -> Tuple[Dict[str, str], str]:
     batch_text_all = " ".join([b['content'] for b in batch_blocks])
-    relevant_glossary = filter_relevant_glossary(batch_text_all, glossary)
-    glossary_text = json.dumps(relevant_glossary, ensure_ascii=False)
-    trans_list = await ladder_rescue_engine(batch_blocks, config, glossary_text, stage="literal")
-    literal_map = {str(item['id']): item.get('trans', '') for item in trans_list if 'id' in item}
-    return literal_map, glossary_text
+    local_terms = filter_relevant_glossary(batch_text_all, glossary)
+    local_glossary_text = canonical_json(local_terms)
+
+    trans_list = await ladder_rescue_engine(
+        batch_blocks,
+        config,
+        core_glossary_text,
+        local_glossary_text,
+        stage="literal"
+    )
+
+    return {
+        str(item['id']): item.get('trans', '')
+        for item in trans_list
+        if 'id' in item
+    }, local_glossary_text
 
 def postprocess_translation(original: str, translation: str) -> str:
     """
@@ -379,12 +451,27 @@ def postprocess_translation(original: str, translation: str) -> str:
         return cleaned or translation # 如果清理后变为空（虽然不太可能），保留原样
     return translation
 
-async def process_polish_stage(batch_blocks: List[Dict], config, literal_map: Dict[str, str], glossary_text: str, previous_context: str = "", future_context: str = "") -> List[Dict]:
+async def process_polish_stage(
+    batch_blocks: List[Dict], 
+    config, 
+    literal_map: Dict[str, str], 
+    core_glossary_text: str = "{}",
+    local_glossary_text: str = "{}", 
+    previous_context: str = "", 
+    future_context: str = "",
+    recent_state: str = "",
+    global_profile: str = "{}",
+    translation_policy: str = "{}",
+    scene_guidance: str = "{}"
+) -> List[Dict]:
     polished_list = await ladder_rescue_engine(
-        batch_blocks, config, glossary_text, stage="polish",
+        batch_blocks, config, core_glossary_text, local_glossary_text, stage="polish",
         literal_map=literal_map,
-        previous_context=previous_context,
-        future_context=future_context
+        previous_context=recent_state or previous_context,
+        future_context=future_context,
+        global_profile=global_profile,
+        translation_policy=translation_policy,
+        scene_guidance=scene_guidance
     )
     polish_map = {str(item['id']): item.get('polished', '') for item in polished_list if 'id' in item}
     final_blocks = []

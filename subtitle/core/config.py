@@ -1,11 +1,8 @@
 # -*- coding: utf-8 -*-
 import os
+import json
 from dataclasses import dataclass, field
 from typing import List
-from dotenv import load_dotenv
-
-# 加载 .env 文件（如果存在）
-load_dotenv()
 
 # --- 基础路径 ---
 # 获取 config.py 所在的目录 (subtitle/core)
@@ -16,6 +13,9 @@ BASE_DIR = os.path.dirname(CURRENT_FILE_DIR)
 ROOT_DIR = os.path.dirname(BASE_DIR)
 CACHE_DIR = os.path.join(ROOT_DIR, ".cache")
 
+# 预设文件路径
+PRESETS_FILE = os.path.join(BASE_DIR, "presets.json")
+
 # --- 语料库路径 (供 glossary_manager 直接使用) ---
 GLOSSARY_DIR = os.path.join(BASE_DIR, 'glossaries')
 GLOSSARY_DB_PATH = os.path.join(BASE_DIR, 'glossary_cache.db')
@@ -23,48 +23,101 @@ NAMES_DB_PATH = os.path.join(GLOSSARY_DIR, 'names_translation.db')
 LLM_DISCOVERY_DB_PATH = os.path.join(BASE_DIR, 'llm_discovery.db')
 LLM_DISCOVERY_CN_DB_PATH = os.path.join(BASE_DIR, 'llm_discovery_cn.db')
 
+def load_presets():
+    """从文件加载预设，如果文件不存在则尝试从 .env 转换（过渡期）"""
+    if os.path.exists(PRESETS_FILE):
+        try:
+            with open(PRESETS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"加载预设失败: {e}")
+    return {}
+
+def save_presets(presets):
+    """将预设保存到文件"""
+    try:
+        with open(PRESETS_FILE, "w", encoding="utf-8") as f:
+            json.dump(presets, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"保存预设失败: {e}")
+
 @dataclass
 class TranslationConfig:
     # --- API 配置 ---
-    api_key: str = os.getenv("LLM_API_KEY", "")
-    api_url: str = os.getenv("LLM_API_URL", "http://localhost:19183/v1/chat/completions")
-    model_name: str = os.getenv("LLM_MODEL_NAME", "openai/gpt-oss-20b")
+    api_key: str = ""
+    api_url: str = "http://localhost:19183/v1/chat/completions"
+    model_name: str = "openai/gpt-oss-20b"
     
     # 自动解析的多 Key 列表
     api_keys: List[str] = field(init=False, default_factory=list)
     
     # --- NER 专用 API 配置 (智能回退逻辑) ---
-    ner_api_key: str = os.getenv("NER_API_KEY", "")
-    ner_api_url: str = os.getenv("NER_API_URL", "")
-    ner_model_name: str = os.getenv("NER_MODEL_NAME", "")
+    ner_api_key: str = ""
+    ner_api_url: str = ""
+    ner_model_name: str = ""
     
     # --- 并发控制 ---
-    max_concurrent_requests: int = int(os.getenv("MAX_CONCURRENT_REQUESTS", "4"))
-    rpm_limit: int = int(os.getenv("RPM_LIMIT", "60"))
-    tpm_limit: int = int(os.getenv("TPM_LIMIT", "100000"))
-    batch_size: int = int(os.getenv("BATCH_SIZE", "8")),
+    max_concurrent_requests: int = 4
+    rpm_limit: int = 60
+    tpm_limit: int = 100000
+    batch_size: int = 8
     
     # --- 容错配置 ---
-    max_retries: int = int(os.getenv("MAX_RETRIES", "3"))
-    retry_delay: float = float(os.getenv("RETRY_DELAY", "2.0"))
-    max_tokens: int = int(os.getenv("MAX_TOKENS", "4096")),
+    max_retries: int = 3
+    retry_delay: float = 2.0
+    max_tokens: int = 4096
     
     # --- 语料库配置 ---
     glossary_dir: str = GLOSSARY_DIR
     glossary_db_path: str = GLOSSARY_DB_PATH
     llm_discovery_db_path: str = LLM_DISCOVERY_DB_PATH
-    enable_llm_discovery: bool = os.getenv("ENABLE_LLM_DISCOVERY", "True").lower() == "true"
-    enable_names_db: bool = os.getenv("ENABLE_NAMES_DB", "False").lower() == "true"
+    enable_llm_discovery: bool = True
+    enable_names_db: bool = False
     
     # [新增] 目标语言，默认中文 'zh'，可选英文 'en' 
     target_lang: str = "zh" 
     
     # --- LLM 温度配置 ---
-    temp_terms: float = float(os.getenv("TEMP_TERMS", "0.1"))
-    temp_literal: float = float(os.getenv("TEMP_LITERAL", "0.3"))
-    temp_polish: float = float(os.getenv("TEMP_POLISH", "0.5"))
+    temp_terms: float = 0.1
+    temp_literal: float = 0.3
+    temp_polish: float = 0.5
 
     def __post_init__(self):
+        # 尝试从 presets.json 加载
+        presets = load_presets()
+        active_name = presets.get("_current")
+        
+        # 优先级：指定当前预设 > 第一个预设 > 默认硬编码值
+        data = {}
+        if active_name and active_name in presets:
+            data = presets[active_name]
+        elif presets:
+            # 排除下划线开头的元数据键
+            valid_presets = {k: v for k, v in presets.items() if not k.startswith("_")}
+            if valid_presets:
+                data = next(iter(valid_presets.values()))
+
+        if data:
+            self.api_key = os.getenv("LLM_API_KEY", data.get("api_key", self.api_key))
+            self.api_url = os.getenv("LLM_API_URL", data.get("api_url", self.api_url))
+            self.model_name = os.getenv("LLM_MODEL_NAME", data.get("model_name", self.model_name))
+            
+            self.max_concurrent_requests = int(os.getenv("MAX_CONCURRENT_REQUESTS", data.get("max_concurrent", data.get("max_concurrent_requests", self.max_concurrent_requests))))
+            self.rpm_limit = int(os.getenv("RPM_LIMIT", data.get("rpm_limit", self.rpm_limit)))
+            self.batch_size = int(os.getenv("BATCH_SIZE", data.get("batch_size", self.batch_size)))
+            
+            self.max_retries = int(os.getenv("MAX_RETRIES", data.get("max_retries", self.max_retries)))
+            self.retry_delay = float(os.getenv("RETRY_DELAY", data.get("retry_delay", self.retry_delay)))
+            self.max_tokens = int(os.getenv("MAX_TOKENS", data.get("max_tokens", self.max_tokens)))
+            
+            self.enable_llm_discovery = str(os.getenv("ENABLE_LLM_DISCOVERY", data.get("enable_discovery", data.get("enable_llm_discovery", self.enable_llm_discovery)))).lower() == "true"
+            self.enable_names_db = str(os.getenv("ENABLE_NAMES_DB", data.get("enable_names_db", self.enable_names_db))).lower() == "true"
+            
+            self.temp_terms = float(os.getenv("TEMP_TERMS", data.get("temp_terms", self.temp_terms)))
+            self.temp_literal = float(os.getenv("TEMP_LITERAL", data.get("temp_literal", self.temp_literal)))
+            self.temp_polish = float(os.getenv("TEMP_POLISH", data.get("temp_polish", self.temp_polish)))
+            self.target_lang = os.getenv("TARGET_LANG", data.get("target_lang", self.target_lang))
+
         # 处理多 API Key 情况 (逗号分隔)
         self.api_keys = [k.strip() for k in self.api_key.split(",") if k.strip()]
         
@@ -97,37 +150,36 @@ def clear_cache():
     
     return True
 
-def save_config_to_env(config_dict: dict):
-    """将配置字典保存到 .env 文件中"""
-    env_path = os.path.join(os.path.dirname(BASE_DIR), ".env")
+def save_config_to_presets(config_dict: dict, preset_name: str = "Default"):
+    """将配置字典保存到 presets.json 中"""
+    presets = load_presets()
     
-    # 读取现有的 .env 内容
-    lines = []
-    if os.path.exists(env_path):
-        with open(env_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+    # 映射键名 (将 .env 风格映射到 json 风格)
+    mapping = {
+        "LLM_API_KEY": "api_key",
+        "LLM_API_URL": "api_url",
+        "LLM_MODEL_NAME": "model_name",
+        "MAX_CONCURRENT_REQUESTS": "max_concurrent",
+        "RPM_LIMIT": "rpm_limit",
+        "BATCH_SIZE": "batch_size",
+        "MAX_RETRIES": "max_retries",
+        "RETRY_DELAY": "retry_delay",
+        "MAX_TOKENS": "max_tokens",
+        "TEMP_TERMS": "temp_terms",
+        "TEMP_LITERAL": "temp_literal",
+        "TEMP_POLISH": "temp_polish",
+        "ENABLE_LLM_DISCOVERY": "enable_discovery",
+        "ENABLE_NAMES_DB": "enable_names_db"
+    }
     
-    # 更新或添加配置项
-    new_lines = []
-    processed_keys = set()
-    
-    for line in lines:
-        stripped = line.strip()
-        if stripped and "=" in stripped and not stripped.startswith("#"):
-            key = stripped.split("=")[0].strip()
-            if key in config_dict:
-                new_lines.append(f"{key}={config_dict[key]}\n")
-                processed_keys.add(key)
-                continue
-        new_lines.append(line)
+    new_preset_data = {}
+    for k, v in config_dict.items():
+        json_key = mapping.get(k, k.lower())
+        new_preset_data[json_key] = v
         
-    # 添加原本不存在的项
-    for key, value in config_dict.items():
-        if key not in processed_keys:
-            new_lines.append(f"{key}={value}\n")
-            
-    with open(env_path, 'w', encoding='utf-8') as f:
-        f.writelines(new_lines)
+    presets[preset_name] = new_preset_data
+    presets["_current"] = preset_name
+    save_presets(presets)
 
 class TranslationArgs:
     def __init__(self, input_file, output_file, bilingual, model_name=None, batch_size=None, target_lang="zh"):
@@ -136,7 +188,7 @@ class TranslationArgs:
         self.bilingual = bilingual
         self.target_lang = target_lang
         
-        # 加载基础配置 (从 .env 读取)
+        # 加载基础配置 (从 presets.json 读取)
         config = TranslationConfig()
         
         self.api_key = config.api_key

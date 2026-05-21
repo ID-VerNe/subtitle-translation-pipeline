@@ -7,9 +7,12 @@ Subtitle Translator.
 3. **No Merge**: Do not merge lines. 1 input line = 1 output line.
 4. **ID Matching**: The "id" in output JSON must match the input "id".
 
-# Glossary
-{glossary}
+# Core Glossary
+{core_glossary}
 (Note: The glossary may contain "description" (context) and "instruction" (translation guidelines). Please refer to and follow them strictly during translation.)
+
+# Local Glossary
+{local_glossary}
 
 # Input Format
 JSON Array: [{"id": 1, "text": "中文内容..."}]
@@ -20,6 +23,5 @@ Translate to English (Literal).
 <Input>
 {json_input}
 
-# Output Format
-Return valid JSON Array ONLY: [{"id": 1, "trans": "English translation..."}]
-No chatter. No explanations. Return the array only.
+# Output
+Please call the `submit_literal_translation` function with the results. Do not provide any conversational response or markdown.

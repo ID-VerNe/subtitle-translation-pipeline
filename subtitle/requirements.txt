@@ -2,5 +2,4 @@ flashtext
 pyperclip
 aiohttp
 tqdm
-python-dotenv
 json_repair

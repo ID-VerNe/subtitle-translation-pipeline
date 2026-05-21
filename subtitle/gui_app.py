@@ -26,7 +26,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
-from core.config import TranslationConfig, TranslationArgs, save_config_to_env, CACHE_DIR, clear_cache
+from core.config import TranslationConfig, TranslationArgs, save_config_to_presets, load_presets, save_presets, CACHE_DIR, clear_cache
 from translate_srt_llm import run_translation
 
 # 动态加载工具子模块
@@ -41,30 +41,6 @@ ASS_TOOL_PATH = os.path.join(BASE_DIR, "post-process", "02-post_process_ass.py")
 
 extract_tool = load_module("extract_tool", EXTRACT_TOOL_PATH)
 ass_tool = load_module("ass_tool", ASS_TOOL_PATH)
-
-# 预设文件路径
-PRESETS_FILE = os.path.join(BASE_DIR, "presets.json")
-
-# 默认内置预设 (用户可根据此模板自定义)
-DEFAULT_PRESETS = {}
-
-def load_presets():
-    """从文件加载预设，如果文件不存在则返回空"""
-    if os.path.exists(PRESETS_FILE):
-        try:
-            with open(PRESETS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"加载预设失败: {e}")
-    return DEFAULT_PRESETS.copy()
-
-def save_presets(presets):
-    """将预设保存到文件"""
-    try:
-        with open(PRESETS_FILE, "w", encoding="utf-8") as f:
-            json.dump(presets, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        print(f"保存预设失败: {e}")
 
 logger = logging.getLogger("GUI")
 
@@ -96,6 +72,7 @@ class SubtitleTranslatorApp:
         
         # 加载持久化预设
         self.all_presets = load_presets()
+        self.display_presets = [k for k in self.all_presets.keys() if not k.startswith("_")]
         
         # --- 数据绑定 ---
         self.input_file = tk.StringVar()
@@ -125,15 +102,14 @@ class SubtitleTranslatorApp:
         # --- UI 初始化 ---
         self.setup_ui()
         
-        # 默认选中 GLM-4-Flash 预设
-        default_target = "GLM-4-Flash"
-        if default_target in self.all_presets:
-            self.preset_var.set(default_target)
+        # 优先选中上次使用的预设
+        last_active = self.all_presets.get("_current")
+        if last_active and last_active in self.all_presets:
+            self.preset_var.set(last_active)
             self.apply_preset()
-        elif self.all_presets:
-            # 如果不存在 GLM-4-Flash，则选中第一个
-            first_preset = list(self.all_presets.keys())[0]
-            self.preset_var.set(first_preset)
+        elif self.display_presets:
+            # 默认选中第一个
+            self.preset_var.set(self.display_presets[0])
             self.apply_preset()
 
         # Redirect logging
@@ -195,12 +171,9 @@ class SubtitleTranslatorApp:
         
         ttk.Label(preset_frame, text="快速切换环境预设:").pack(side=tk.LEFT, padx=5)
         self.preset_var = tk.StringVar()
-        self.preset_combo = ttk.Combobox(preset_frame, textvariable=self.preset_var, values=list(self.all_presets.keys()), state="readonly", width=35)
+        self.preset_combo = ttk.Combobox(preset_frame, textvariable=self.preset_var, values=self.display_presets, state="readonly", width=35)
         self.preset_combo.pack(side=tk.LEFT, padx=5)
         self.preset_combo.bind("<<ComboboxSelected>>", self.apply_preset)
-
-        self.save_preset_btn = ttk.Button(preset_frame, text="➕ 保存当前环境为新预设", command=self.add_custom_preset)
-        self.save_preset_btn.pack(side=tk.LEFT, padx=5)
 
         # File Selection
         file_frame = ttk.LabelFrame(self.trans_tab, text="文件选择", padding="10")
@@ -312,8 +285,9 @@ class SubtitleTranslatorApp:
         btn_frame = ttk.Frame(self.settings_tab)
         btn_frame.pack(fill=tk.X, pady=10)
 
-        ttk.Button(btn_frame, text="💾 保存当前设置到 .env (永久生效)", command=self.save_to_env).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, ipady=8)
-        ttk.Button(btn_frame, text="🗑️ 清理所有翻译缓存 (.cache)", command=self.do_clear_cache).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, ipady=8)
+        ttk.Button(btn_frame, text="💾 保存当前设置", command=self.save_to_current_preset).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, ipady=8)
+        ttk.Button(btn_frame, text="➕ 另存为新预设", command=self.add_custom_preset).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, ipady=8)
+        ttk.Button(btn_frame, text="🗑️ 清理翻译缓存", command=self.do_clear_cache).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, ipady=8)
 
     def do_clear_cache(self):
         if messagebox.askyesno("确认", "确定要清理所有翻译缓存吗？这将删除所有未完成任务的进度记录。"):
@@ -325,6 +299,10 @@ class SubtitleTranslatorApp:
         name = self.preset_var.get()
         if name in self.all_presets:
             p = self.all_presets[name]
+            # 更新当前使用的预设标识
+            self.all_presets["_current"] = name
+            save_presets(self.all_presets)
+            
             # 批量设置，全部转为字符串或对应类型，防止 Tkinter 报错
             try:
                 if "api_url" in p: self.api_url_var.set(str(p["api_url"]))
@@ -360,6 +338,7 @@ class SubtitleTranslatorApp:
             "rpm_limit": self.safe_get_int(self.rpm_var),
             "max_retries": self.safe_get_int(self.retries_var),
             "retry_delay": self.safe_get_float(self.retry_delay_var),
+            "max_tokens": self.safe_get_int(self.max_tokens_var),
             "enable_discovery": self.enable_discovery_var.get(),
             "enable_names_db": self.enable_names_db_var.get(),
             "target_lang": self.target_lang_var.get(),
@@ -371,13 +350,16 @@ class SubtitleTranslatorApp:
         }
         
         self.all_presets[name] = new_preset
+        self.all_presets["_current"] = name
         save_presets(self.all_presets)
-        self.preset_combo['values'] = list(self.all_presets.keys())
+        self.display_presets = [k for k in self.all_presets.keys() if not k.startswith("_")]
+        self.preset_combo['values'] = self.display_presets
         self.preset_var.set(name)
-        messagebox.showinfo("成功", f"环境预设 '{name}' 已保存！")
+        messagebox.showinfo("成功", f"环境预设 '{name}' 已保存并设为当前！")
 
-    def save_to_env(self):
+    def save_to_current_preset(self):
         try:
+            current_preset_name = self.preset_var.get() or "Default"
             config_data = {
                 "LLM_API_KEY": self.api_key_var.get(),
                 "LLM_API_URL": self.api_url_var.get(),
@@ -394,8 +376,10 @@ class SubtitleTranslatorApp:
                 "ENABLE_LLM_DISCOVERY": str(self.enable_discovery_var.get()),
                 "ENABLE_NAMES_DB": str(self.enable_names_db_var.get())
             }
-            save_config_to_env(config_data)
-            messagebox.showinfo("成功", "配置已成功同步到 .env 文件！")
+            save_config_to_presets(config_data, current_preset_name)
+            # 重新加载内存中的预设
+            self.all_presets = load_presets()
+            messagebox.showinfo("成功", f"配置已保存到预设 '{current_preset_name}'")
         except Exception as e:
             logger.error(f"保存配置失败: {e}")
 

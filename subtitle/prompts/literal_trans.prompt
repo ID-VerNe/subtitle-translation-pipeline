@@ -7,11 +7,14 @@
 3. 必须翻译为中文。
 4. **禁止合并**：严禁将多行字幕合并为一行。输入是几行，输出就是几行。
 5. **ID 对应**：输出 JSON 中的 "id" 必须严格对应输入的 "id"。
-6. **输出约束**：只输出 JSON 数据本身。严禁使用 ```json ... ``` 包裹输出。
+6. **输出约束**：请通过调用 `submit_literal_translation` 函数来提交结果。严禁输出 Markdown 标签、解释文字或自由文本。
 
-# Glossary
-{glossary}
+# Core Glossary
+{core_glossary}
 (注：术语表中若包含 "description" (背景说明) 和 "instruction" (翻译指令)，请在翻译时严格参考并遵守。)
+
+# Local Glossary
+{local_glossary}
 
 # Input Format
 JSON Array: [{{"id": 1, "text": "English..."}}]
@@ -19,9 +22,19 @@ JSON Array: [{{"id": 1, "text": "English..."}}]
 # Task
 Translate to Chinese (Literal).
 
+# Output Format
+必须通过调用 `submit_literal_translation` 函数提交结果，JSON 格式如下：
+{{
+  "translations": [
+    {{
+      "id": 1,
+      "trans": "直译后的中文"
+    }}
+  ]
+}}
+
 <Input>
 {json_input}
 
-# Output Format
-Return valid JSON Array ONLY: [{{"id": 1, "trans": "中文..."}}]
-No markdown tags. No chatter. No explanations. Return the raw JSON array string.
+# Output
+Please call the function with the results. Do not provide any conversational response.

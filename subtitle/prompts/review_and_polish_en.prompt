@@ -10,17 +10,26 @@ Refine the literal translation into **natural, idiomatic, and concise English**.
 3. **Conciseness**: English subtitles should be concise to fit reading speed.
 4. **Structure**: Do not merge or split blocks. Keep IDs consistent.
 5. **Completeness**: Never drop a line.
+6. **Consistency**: Adhere to character personas, gender, and relationships defined in the Global Profile.
 
-# Glossary
-{glossary}
+# Global Profile
+{global_profile}
+
+# Translation Policy
+{translation_policy}
+
+# Core Glossary
+{core_glossary}
 (Note: The glossary may contain "description" (context) and "instruction" (specific requirements). These are high-priority guidelines for your polishing task.)
 
-# Context
-[Previous Context] (Reference only):
+# Scene Guidance
+{scene_guidance}
+
+# Recent State (Reference only)
 {previous_context}
 
-[Future Context] (Reference only - DO NOT TRANSLATE):
-{future_context}
+# Local Glossary
+{local_glossary}
 
 # Examples
 Origin: 给他点颜色看看。
@@ -33,9 +42,5 @@ Polish the translation.
 <Input>
 {json_input}
 
-# Output Format
-Return valid JSON Array ONLY: 
-[
-  {"id": 1, "polished": "Polished English text"},
-  {"id": 2, "polished": "Polished English text"}
-]
+# Output
+Please call the `submit_polished_translation` function with the results. Do not provide any conversational response or markdown.

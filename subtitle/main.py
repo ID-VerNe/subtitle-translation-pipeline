@@ -11,6 +11,7 @@ from typing import List
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from core.config import TranslationConfig, TranslationArgs, CACHE_DIR
+from core.cache_utils import build_file_cache_key
 from translate_srt_llm import run_translation
 
 # 动态加载子模块
@@ -49,8 +50,8 @@ async def main():
     parser.add_argument("--to-english", action="store_true", help="开启中译英模式")
     parser.add_argument("--bilingual", action="store_true", default=True, help="是否生成双语字幕 (默认开启)")
     parser.add_argument("--no-bilingual", action="store_false", dest="bilingual", help="仅保留中文字幕")
-    parser.add_argument("--model", type=str, help="覆盖 .env 中的模型名称")
-    parser.add_argument("--batch-size", type=int, help="覆盖 .env 中的批次大小")
+    parser.add_argument("--model", type=str, help="覆盖 presets.json 中的模型名称")
+    parser.add_argument("--batch-size", type=int, help="覆盖 presets.json 中的批次大小")
     parser.add_argument("--enable-names-db", action="store_true", help="启用人名数据库 (默认禁用)")
     
     args = parser.parse_args()
@@ -85,8 +86,11 @@ async def main():
 
     # 2. 翻译
     cache_dir = CACHE_DIR
-    input_filename = os.path.basename(working_srt)
-    file_hash = hashlib.md5(input_filename.encode('utf-8')).hexdigest()
+    file_hash = build_file_cache_key(
+        input_file=working_srt,
+        target_lang=target_lang,
+        model_name=args.model or ""
+    )
     
     if final_format == "ass":
         translated_srt = os.path.join(cache_dir, f"translated_{file_hash}.srt")
