@@ -15,6 +15,7 @@ CACHE_DIR = os.path.join(ROOT_DIR, ".cache")
 
 # 预设文件路径
 PRESETS_FILE = os.path.join(BASE_DIR, "presets.json")
+PRESETS_EXAMPLE = os.path.join(BASE_DIR, "presets.json.example")
 
 # --- 语料库路径 (供 glossary_manager 直接使用) ---
 GLOSSARY_DIR = os.path.join(BASE_DIR, 'glossaries')
@@ -25,6 +26,14 @@ LLM_DISCOVERY_CN_DB_PATH = os.path.join(BASE_DIR, 'llm_discovery_cn.db')
 
 def load_presets():
     """从文件加载预设，如果文件不存在则尝试从 .env 转换（过渡期）"""
+    if not os.path.exists(PRESETS_FILE) and os.path.exists(PRESETS_EXAMPLE):
+        import shutil
+        try:
+            shutil.copy(PRESETS_EXAMPLE, PRESETS_FILE)
+            print(f"已根据模板创建预设文件: {PRESETS_FILE}")
+        except Exception as e:
+            print(f"创建预设文件失败: {e}")
+
     if os.path.exists(PRESETS_FILE):
         try:
             with open(PRESETS_FILE, "r", encoding="utf-8") as f:

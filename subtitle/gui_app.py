@@ -70,6 +70,10 @@ class SubtitleTranslatorApp:
         self.root.title("Subtitle Translator GUI")
         self.root.geometry("950x850") # 稍微调大一点适应更多参数
         
+        # 检查预设文件是否存在，如果不存在则会触发 core.config 中的自动创建逻辑
+        from core.config import PRESETS_FILE
+        is_first_run = not os.path.exists(PRESETS_FILE)
+
         # 加载持久化预设
         self.all_presets = load_presets()
         self.display_presets = [k for k in self.all_presets.keys() if not k.startswith("_")]
@@ -117,6 +121,9 @@ class SubtitleTranslatorApp:
         self.log_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         logging.getLogger().addHandler(self.log_handler)
         logger.addHandler(self.log_handler)
+
+        if is_first_run:
+            messagebox.showwarning("首次运行提示", "未找到 presets.json，已根据模板自动创建。\n请前往『高级配置』标签页设置你的 API Key。")
 
     def safe_get_int(self, var, default=0):
         try:
