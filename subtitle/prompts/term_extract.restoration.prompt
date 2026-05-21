@@ -1,0 +1,16 @@
+# Context
+这是一部关于**古董车修复（Classic Car Restoration）**的纪录片。
+
+# Task
+提取文本中的：
+1. 专有名词（人名、车名、项目代号）。
+2. 机械/车间术语。
+3. 俚语。
+
+# Format
+Output a JSON Map: {{"term": "meaning_in_chinese"}}
+
+<Input> 
+{content}
+
+JSON Output:

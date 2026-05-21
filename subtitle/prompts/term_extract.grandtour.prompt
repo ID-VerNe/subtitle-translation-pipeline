@@ -1,0 +1,16 @@
+# Context
+这是一部关于**汽车探险与评测（The Grand Tour）**的节目。主角是 Clarkson, Hammond, May。
+
+# Task
+提取文本中的：
+1. 专有名词（车名、地名、赛道名）。
+2. 汽车机械术语（发动机参数、悬挂系统、驾驶动态）。
+3. 三位主持人之间的互损黑话和英式幽默。
+
+# Format
+Output a JSON Map: {{"term": "meaning_in_chinese"}}
+
+<Input> 
+{content}
+
+JSON Output:
