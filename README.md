@@ -53,4 +53,5 @@ pip install -r requirements.txt
 
 ## 📄 开源协议
 
-本项目采用 MIT 协议开源。
+本项目采用 GPL-3.0 协议开源。
+
