@@ -293,6 +293,44 @@ async def run_translation(args, progress_callback=None):
             progress_callback(total_batches, total_batches)
         
         logger.info("✅ 翻译完成！")
+        
+        # --- 6. 生成注释 (可选) ---
+        if getattr(args, 'enable_annotations', False):
+            logger.info("\n开始生成全文注释...")
+            
+            # 读取已翻译的完整 SRT
+            final_blocks = parse_srt(args.output_file)
+            
+            if final_blocks:
+                # 获取影片类型
+                genre = global_profile.get('genre', '未知')
+                
+                # 生成注释
+                from core.annotation_pipeline import generate_annotations_for_subtitle
+                id_to_annotation = await generate_annotations_for_subtitle(
+                    config, 
+                    final_blocks, 
+                    genre=genre,
+                    batch_size=150
+                )
+                
+                # 保存带注释标记的结果
+                if id_to_annotation:
+                    annotation_output = args.output_file.replace('.srt', '_with_annotations.srt')
+                    with open(annotation_output, 'w', encoding='utf-8') as f:
+                        for i, block in enumerate(final_blocks, start=1):
+                            block_id = int(block['index'])
+                            # 写入原字幕
+                            f.write(format_srt_block(i, block['timestamp'], block['polished']))
+                            # 如果有注释，追加注释行
+                            if block_id in id_to_annotation:
+                                f.write(format_srt_block(i, block['timestamp'], id_to_annotation[block_id]))
+                    
+                    logger.info(f"✅ 带注释的字幕已生成: {annotation_output}")
+                    logger.info(f"   共添加 {len(id_to_annotation)} 条注释")
+                else:
+                    logger.info("未识别到需要注释的内容")
+            
     finally:
         # 安全清理：取消任何挂起的异步预取任务
         if next_literal_task and not next_literal_task.done():
@@ -333,6 +371,9 @@ def main():
     parser.add_argument('--temp-terms', type=float, default=defaults.temp_terms, help='术语提取温度')
     parser.add_argument('--temp-literal', type=float, default=defaults.temp_literal, help='直译温度')
     parser.add_argument('--temp-polish', type=float, default=defaults.temp_polish, help='润色温度')
+    
+    # --- 注释功能 ---
+    parser.add_argument('--enable-annotations', action='store_true', help='启用全文注释生成（实验性功能）')
 
     args = parser.parse_args()
 

@@ -53,6 +53,7 @@ async def main():
     parser.add_argument("--model", type=str, help="覆盖 presets.json 中的模型名称")
     parser.add_argument("--batch-size", type=int, help="覆盖 presets.json 中的批次大小")
     parser.add_argument("--enable-names-db", action="store_true", help="启用人名数据库 (默认禁用)")
+    parser.add_argument("--enable-annotations", action="store_true", help="启用注释生成 (默认禁用)")
     
     args = parser.parse_args()
 
@@ -106,6 +107,8 @@ async def main():
     )
     if args.enable_names_db:
         trans_args.enable_names_db = True
+    if args.enable_annotations:
+        trans_args.enable_annotations = True
 
     await run_translation(trans_args)
 
@@ -114,7 +117,16 @@ async def main():
         logger.info(f"正在生成 ASS 格式: {final_output}")
         head_path = os.path.join(BASE_DIR, "post-process", "asshead.txt")
         if not os.path.exists(head_path): head_path = "asshead.txt"
-        ass_tool.srt_to_ass(translated_srt, head_path, final_output)
+        
+        # 如果启用了注释，使用带注释的 SRT
+        source_srt = translated_srt
+        if args.enable_annotations:
+            annotation_srt = translated_srt.replace('.srt', '_with_annotations.srt')
+            if os.path.exists(annotation_srt):
+                logger.info(f"使用带注释的字幕文件: {annotation_srt}")
+                source_srt = annotation_srt
+        
+        ass_tool.srt_to_ass(source_srt, head_path, final_output)
         logger.info(f"✅ 完成！最终字幕文件已生成: {os.path.abspath(final_output)}")
     else:
         logger.info(f"✅ 完成！最终字幕文件已生成: {os.path.abspath(final_output)}")

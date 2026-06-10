@@ -20,4 +20,5 @@ def get_prompt_templates(target_lang: str = "zh") -> Dict[str, str]:
         "NER_NAMES": load_prompt("ner_names"),
         "LITERAL_TRANS": load_prompt(f"literal_trans{suffix}"),
         "REVIEW_AND_POLISH": load_prompt(f"review_and_polish{suffix}"),
+        "ANNOTATION_EXTRACT": load_prompt("annotation_extract"),
     }

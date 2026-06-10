@@ -67,8 +67,17 @@ def clean_single_line(text):
 
 def detect_language_style(text):
     """
-    简单的语言检测：包含中文字符则认为是中文，否则是英文
+    简单的语言检测：
+    - 如果文本主要是专有名词+解释，判定为注释
+    - 包含中文字符则认为是中文
+    - 否则是英文
     """
+    # 检测是否为注释：包含大写字母开头的专有词 + 中文解释
+    # 例如：LAMMA（林肯郡农机制造商协会）英国年度最大农机展
+    if re.match(r'^[A-Z][A-Za-z0-9\s\-\'\.]*[\(（]', text):
+        return "注释"
+    
+    # 常规语言检测
     is_chinese = any('\u4e00' <= char <= '\u9fff' for char in text)
     return "中文" if is_chinese else "英文"
 
@@ -147,8 +156,13 @@ def srt_to_ass(srt_path, ass_head_path, output_path=None):
             event_groups = process_block_content(block['content'])
             
             for text, style in event_groups:
-                # 构造行，显式转义 \be3。注意：Dialogue 行需要 9 个逗号以分隔 10 个字段
-                dialogue_line = f"Dialogue: 0,{ass_start},{ass_end},{style},,0,0,0,,{{\\be3}}{text}\n"
+                # 根据样式设置不同的特效代码
+                if style == "注释":
+                    # 注释使用 \be6 特效
+                    dialogue_line = f"Dialogue: 0,{ass_start},{ass_end},{style},,0,0,0,,{{\\be6}}{text}\n"
+                else:
+                    # 中英文使用 \be3 特效
+                    dialogue_line = f"Dialogue: 0,{ass_start},{ass_end},{style},,0,0,0,,{{\\be3}}{text}\n"
                 f.write(dialogue_line)
                 count += 1
             
