@@ -4,8 +4,7 @@ import asyncio
 from typing import List, Dict
 
 from .llm_client import call_llm, call_llm_batch, clean_and_extract_json
-from .cache_utils import load_json_file, save_json_file, canonical_json
-from .config import CACHE_DIR
+from .cache_utils import load_json_file, save_json_file, canonical_json, get_cache_path
 
 
 GLOBAL_PROFILE_PROMPT_VERSION = "GLOBAL_PROFILE_V1"
@@ -216,8 +215,8 @@ async def build_global_profile(config, blocks: List[Dict]) -> Dict:
     return base
 
 
-async def load_or_build_global_profile(config, blocks: List[Dict], cache_key: str) -> Dict:
-    path = os.path.join(CACHE_DIR, f"global_profile_{cache_key}_{config.target_lang}.json")
+async def load_or_build_global_profile(config, blocks: List[Dict], input_file: str) -> Dict:
+    path = get_cache_path(input_file, "global_profile", config.target_lang, config.model_name)
 
     cached = load_json_file(path)
     if isinstance(cached, dict) and cached:
@@ -478,9 +477,9 @@ async def enrich_single_scene(config, scene: Dict, blocks: List[Dict]) -> Dict:
     }
 
 
-async def load_or_build_scene_map(config, blocks: List[Dict], cache_key: str) -> Dict:
+async def load_or_build_scene_map(config, blocks: List[Dict], input_file: str) -> Dict:
     target_lang = config.target_lang
-    path = os.path.join(CACHE_DIR, f"scene_map_{cache_key}_{target_lang}.json")
+    path = get_cache_path(input_file, "scene_map", target_lang, config.model_name)
 
     cached = load_json_file(path)
     if isinstance(cached, dict) and cached.get("scenes"):

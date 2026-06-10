@@ -31,14 +31,16 @@
     1.  打开终端 (Terminal)，进入项目目录。
     2.  输入命令 `bash setup_gui.sh` 并回车。
     3.  脚本会自动通过 `Homebrew` 安装所需依赖。
-
 ### 2. 配置 API Key (必须)
 
-安装完成后，脚本会自动在 `subtitle/` 目录下生成一个 `.env` 文件：
-1.  使用记事本打开 `subtitle/.env`。
-2.  填入你的 `LLM_API_KEY` 和 `LLM_API_URL`。
-3.  **(推荐)** 填写 `NER_API_KEY` 和 `NER_API_URL`（建议使用智谱 GLM-4-Flash，可免费大规模识别文中人名）。
-4.  保存并关闭。
+首次运行程序后，系统会自动在 `subtitle/` 目录下根据模板生成一个 `presets.json` 文件：
+1.  启动程序（见下文），程序会弹窗提示已创建配置文件。
+2.  前往“**高级配置**”标签页。
+3.  在对应的预设（如 `GLM-4-Flash`）下填入你的 `API Key` 和 `API URL`。
+4.  点击“**💾 保存当前设置**”即可。
+5.  **(推荐)** 你也可以直接编辑 `subtitle/presets.json` 文件进行批量配置。
+
+---
 
 ### 3. 启动程序
 

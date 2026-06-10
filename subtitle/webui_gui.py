@@ -1,9 +1,20 @@
 # -*- coding: utf-8 -*-
+import os
+import sys
+
+# --- Embedded Python Tcl/Tk Fix ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+# 检查是否处于嵌入式环境 (python_embed 目录存在)
+EMBED_TCL_DIR = os.path.join(PROJECT_ROOT, "python_embed", "Lib", "site-packages", "tcl")
+if os.path.exists(EMBED_TCL_DIR):
+    os.environ["TCL_LIBRARY"] = os.path.join(EMBED_TCL_DIR, "tcl8.6")
+    os.environ["TK_LIBRARY"] = os.path.join(EMBED_TCL_DIR, "tk8.6")
+# ----------------------------------
+
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 import pyperclip
-import os
-import sys
 import asyncio
 
 # 尝试导入现有的术语管理器
@@ -18,16 +29,21 @@ except ImportError:
 class WebUiGui:
     def __init__(self, root):
         self.root = root
-        self.root.title("AI 翻译 WebUI 助手 - v1.1")
+        self.root.title("AI 翻译 WebUI 助手 - v1.2")
         self.root.geometry("1000x800")
 
-        # 初始化术语库
+        # 初始化术语库 (在 WebUI 模式下，强制加载发现库以便使用，但严禁在该进程内进行保存)
         self.glossary_stats = "未加载"
         if GLOSSARY_AVAILABLE:
             try:
-                glossary_manager.initialize()
+                # 显式告知加载发现库，但保持全局 enable_discovery 不变（用于控制保存权限）
+                glossary_manager.initialize(load_discovery=True)
+                
+                # 【安全性确保】在 WebUI 进程中强制关闭保存权限，即使全局配置开启了也不允许在此处保存
+                glossary_manager.enable_discovery = False
+                
                 count = len(glossary_manager.term_mapping)
-                self.glossary_stats = f"已加载 {count} 条术语"
+                self.glossary_stats = f"已加载 {count} 条术语 (发现库设为只读)"
             except Exception as e:
                 self.glossary_stats = f"加载失败: {e}"
 
@@ -54,13 +70,18 @@ class WebUiGui:
         self.input_text = scrolledtext.ScrolledText(main_frame, height=12, font=("Consolas", 11))
         self.input_text.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
-        # 中部：控制区域
-        ctrl_frame = ttk.Frame(main_frame)
+        # 中部：控制区域 (拆分为三个独立开关)
+        ctrl_frame = ttk.LabelFrame(main_frame, text="辅助功能开关", padding="5")
         ctrl_frame.pack(fill=tk.X, pady=(0, 10))
 
-        self.use_glossary = tk.BooleanVar(value=True)
-        self.glossary_chk = ttk.Checkbutton(ctrl_frame, text="接入术语库与人名库 (自动识别)", variable=self.use_glossary)
-        self.glossary_chk.pack(side=tk.LEFT)
+        self.use_static = tk.BooleanVar(value=True)
+        ttk.Checkbutton(ctrl_frame, text="接入静态术语库", variable=self.use_static).pack(side=tk.LEFT, padx=10)
+
+        self.use_discovery = tk.BooleanVar(value=False)
+        ttk.Checkbutton(ctrl_frame, text="接入发现库 (自动记忆)", variable=self.use_discovery).pack(side=tk.LEFT, padx=10)
+
+        self.use_names = tk.BooleanVar(value=False)
+        ttk.Checkbutton(ctrl_frame, text="接入人名数据库", variable=self.use_names).pack(side=tk.LEFT, padx=10)
 
         # 下部：步骤按钮区域
         btn_frame = ttk.LabelFrame(main_frame, text="2. 选择步骤生成 Prompt", padding="10")
@@ -119,12 +140,11 @@ class WebUiGui:
 
 # Global Rules (全局规范)
 在接下来的对话中，我们将对一段英文文本进行翻译。无论进行到哪一步，你都必须严格遵守以下规范：
-1. **人名处理**：技术书籍中的人名通常不翻译，除非是众所周知的（如乔布斯）。
-2. **书名处理**：有中文版的用中文版书名；无中文版的直接保留英文书名。
-3. **术语格式**：英文术语首次出现时，若有必要，应使用“HTML（Hypertext Markup Language，超文本标识语言）”的格式，之后可使用简写。
-4. **代码处理**：代码块（Code Block）完全不翻译。代码内的注释需翻译（中英对照）。
-5. **标点符号**：译文必须遵循中文标点符号的使用习惯，严禁照搬英文标点。
-6. **图表**：图题、表题需翻译。"""
+1. **书名处理**：有中文版的用中文版书名；无中文版的直接保留英文书名。
+2. **术语格式**：英文术语首次出现时，若有必要，应使用“HTML（Hypertext Markup Language，超文本标识语言）”的格式，之后可使用简写。
+3. **代码处理**：代码块（Code Block）完全不翻译。代码内的注释需翻译（中英对照）。
+4. **标点符号**：译文必须遵循中文标点符号的使用习惯，严禁照搬英文标点。
+5. **图表**：图题、表题需翻译。"""
         self.set_output(prompt)
 
     def gen_step_1(self):
@@ -133,16 +153,21 @@ class WebUiGui:
             messagebox.showwarning("警告", "请先输入英文原文")
             return
 
-        self.status_var.set("正在通过 LLM 智能提取术语与人名...")
+        self.status_var.set("正在执行智能识别...")
         self.root.update_idletasks() # 强制刷新 UI 显示状态
 
         glossary_info = ""
         name_info = ""
         
-        if self.use_glossary and GLOSSARY_AVAILABLE:
+        if GLOSSARY_AVAILABLE:
             try:
-                # 1. 提取静态术语库内容
-                found = glossary_manager.extract_terms(content)
+                # 1. 提取术语 (根据开关过滤)
+                found = glossary_manager.extract_terms(
+                    content, 
+                    include_static=self.use_static.get(), 
+                    include_discovery=self.use_discovery.get()
+                )
+                
                 if found:
                     glossary_info = "\n<已知术语引用>\n以下是术语库中已有的术语，请严格遵守：\n\n"
                     glossary_info += "| 英文 | 中文 | 类别 | 说明 |\n"
@@ -154,35 +179,29 @@ class WebUiGui:
                         glossary_info += f"| {en} | {target} | {cat} | {desc} |\n"
                     glossary_info += "\n"
                 
-                # 2. 【核心升级】调用统一的 LLM 人名识别模块
-                from subtitle.core.config import TranslationConfig
-                config = TranslationConfig()
-                
-                # 显式传入已在主库中发现的词，作为最高优先级排除
-                exclude_list = list(found.keys()) if found else []
-                
-                # 在同步环境中运行异步识别任务
-                try:
-                    found_names = asyncio.run(glossary_manager.fetch_names_with_llm(content, config))
-                    # 再次在结果层进行过滤，确保万无一失
+                # 2. 调用 LLM 人名识别 (仅在开关开启时)
+                if self.use_names.get():
+                    from subtitle.core.config import TranslationConfig
+                    config = TranslationConfig()
+                    exclude_list = list(found.keys()) if found else []
+                    
+                    try:
+                        # 显式传递 force_enable=True 以跳过全局配置检查
+                        found_names = asyncio.run(glossary_manager.fetch_names_with_llm(content, config, force_enable=True))
+                        if found_names:
+                            found_names = {k: v for k, v in found_names.items() if k not in exclude_list}
+                    except Exception as e:
+                        print(f"NER 执行异常: {e}")
+                        found_names = {}
+                    
                     if found_names:
-                        found_names = {k: v for k, v in found_names.items() if k not in exclude_list}
-                except Exception as e:
-                    import traceback
-                    print("--- NER 执行异常详情 ---")
-                    traceback.print_exc()
-                    print("------------------------")
-                    found_names = {}
-                
-                if found_names:
-                    name_info = "\n<已知人名引用>\n以下是人名翻译数据库中的建议译名，请优先采用：\n\n"
-                    name_info += "| 英文名 | 建议中文译名 |\n"
-                    name_info += "| --- | --- |\n"
-                    for en, cn in found_names.items():
-                        name_info += f"| {en} | {cn} |\n"
-                    name_info += "\n"
-                else:
-                    print("DEBUG: LLM 未识别到任何库中存在的人名")
+                        name_info = "\n<已知人名引用>\n以下是人名翻译数据库中的建议译名，请优先采用：\n\n"
+                        name_info += "| 英文名 | 建议中文译名 |\n"
+                        name_info += "| --- | --- |\n"
+                        for en, cn in found_names.items():
+                            name_info += f"| {en} | {cn} |\n"
+                        name_info += "\n"
+
             except Exception as e:
                 import traceback
                 traceback.print_exc()

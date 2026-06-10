@@ -33,7 +33,7 @@ from core.global_memory import (
 )
 from core.llm_client import close_session_pool
 from core.glossary_manager import glossary_manager
-from core.cache_utils import build_file_cache_key, canonical_json
+from core.cache_utils import canonical_json, get_cache_path
 
 # 配置日志
 logging.basicConfig(
@@ -115,21 +115,13 @@ async def run_translation(args, progress_callback=None):
     glossary_manager.initialize(reverse=should_reverse)
 
     # --- 0.1 动态处理缓存路径 ---
-    cache_dir = CACHE_DIR
-    
-    file_hash = build_file_cache_key(
-        input_file=args.input_file,
-        target_lang=target_lang,
-        model_name=config.model_name
-    )
-    
     glossary_cache_file = getattr(args, 'glossary_cache_file', None)
     if glossary_cache_file is None:
-        glossary_cache_file = os.path.join(cache_dir, f"glossary_{file_hash}_{target_lang}.json")
+        glossary_cache_file = get_cache_path(args.input_file, "glossary", target_lang, config.model_name)
         
     progress_file = getattr(args, 'progress_file', None)
     if progress_file is None:
-        progress_file = os.path.join(cache_dir, f"progress_{file_hash}_{target_lang}.json")
+        progress_file = get_cache_path(args.input_file, "progress", target_lang, config.model_name)
 
     # --- 1. 加载 SRT ---
     blocks = parse_srt(args.input_file)
@@ -139,11 +131,11 @@ async def run_translation(args, progress_callback=None):
     logger.info(f"成功加载原文: {len(blocks)} 块")
 
     # --- 1.1 构建全局画像 (Global Discovery) ---
-    global_profile = await load_or_build_global_profile(config, blocks, file_hash)
+    global_profile = await load_or_build_global_profile(config, blocks, args.input_file)
     global_profile_str = global_profile_text(global_profile)
     logger.info("已加载/构建全局画像 global_profile")
 
-    scene_map = await load_or_build_scene_map(config, blocks, file_hash)
+    scene_map = await load_or_build_scene_map(config, blocks, args.input_file)
     logger.info(f"已加载/构建场景映射 scene_map: {len(scene_map.get('scenes', []))} 个场景")
 
     # --- 2. 构建当前任务的混合术语表 ---

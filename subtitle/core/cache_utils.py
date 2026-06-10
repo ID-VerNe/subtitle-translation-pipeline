@@ -63,6 +63,31 @@ def build_file_cache_key(
     return hashlib.md5(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
+def get_cache_path(
+    input_file: str,
+    purpose: str,
+    target_lang: str = "",
+    model_name: str = "",
+    extension: str = ".json"
+) -> str:
+    """
+    根据新规范构建缓存路径：<文件名>_<文件哈希>_<用途>_<语言>.<扩展名>
+    """
+    # 动态导入避免循环依赖
+    from .config import CACHE_DIR
+    
+    base_name = os.path.basename(input_file)
+    file_hash = build_file_cache_key(input_file, target_lang, model_name)
+    
+    # 构造文件名
+    name_parts = [base_name, file_hash, purpose]
+    if target_lang:
+        name_parts.append(target_lang)
+        
+    cache_filename = "_".join(name_parts) + extension
+    return os.path.join(CACHE_DIR, cache_filename)
+
+
 def build_request_cache_key(model_name: str, payload: dict) -> str:
     """
     构建请求级缓存 Key。用于具体的 LLM 请求/响应缓存。

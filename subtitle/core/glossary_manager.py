@@ -30,7 +30,7 @@ class GlossaryManager:
         self.full_term_data = {}
         self._initialized = False
 
-    def initialize(self, reverse=False):
+    def initialize(self, reverse=False, load_discovery: Optional[bool] = None):
         """初始化：建表、增量更新、加载内存"""
         if reverse:
             self.discovery_db_path = LLM_DISCOVERY_CN_DB_PATH
@@ -38,14 +38,19 @@ class GlossaryManager:
             self.discovery_db_path = LLM_DISCOVERY_DB_PATH
 
         self._init_db(self.db_path)
-        if self.enable_discovery:
+
+        # 如果 load_discovery 为 None，则遵循配置项；否则强制按指定值处理
+        actual_load_discovery = self.enable_discovery if load_discovery is None else load_discovery
+
+        if actual_load_discovery:
             self._init_db(self.discovery_db_path)
-        
+
         self.incremental_update()
-        self._load_to_memory(reverse=reverse)
+        self._load_to_memory(reverse=reverse, load_discovery=actual_load_discovery)
         self._initialized = True
         mode = "中->英 (反向)" if reverse else "英->中 (正向)"
         print(f"✅ 语料库初始化完毕 [{mode}]: 内存中包含 {len(self.term_mapping)} 个术语")
+
 
     def _init_db(self, db_path):
         conn = sqlite3.connect(db_path)
@@ -120,11 +125,14 @@ class GlossaryManager:
                     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ''', (source, target, item.get('category', 'General'), item.get('description', '').strip(), item.get('instruction', '').strip(), file_path.name))
 
-    def _load_to_memory(self, reverse=False):
+    def _load_to_memory(self, reverse=False, load_discovery: Optional[bool] = None):
         self.keyword_processor = KeywordProcessor(case_sensitive=False)
         self.term_mapping = {}
         self.full_term_data = {}
-        if self.enable_discovery:
+        
+        actual_load_discovery = self.enable_discovery if load_discovery is None else load_discovery
+        
+        if actual_load_discovery:
             self._load_from_db(self.discovery_db_path, reverse=reverse)
         self._load_from_db(self.db_path, reverse=reverse)
 
@@ -155,12 +163,21 @@ class GlossaryManager:
                 self.full_term_data[source] = term_info
         conn.close()
 
-    def extract_terms(self, text: str) -> Dict[str, dict]:
+    def extract_terms(self, text: str, include_static: bool = True, include_discovery: bool = True) -> Dict[str, dict]:
         found_sources = self.keyword_processor.extract_keywords(text)
         result = {}
         for source in set(found_sources):
             if source in self.full_term_data:
-                result[source] = self.full_term_data[source]
+                data = self.full_term_data[source]
+                # 判断是否属于发现库 (LLM_Discovered)
+                is_discovery = data.get('category') == 'LLM_Discovered'
+                
+                if is_discovery and not include_discovery:
+                    continue
+                if not is_discovery and not include_static:
+                    continue
+                    
+                result[source] = data
         return result
 
     def save_terms(self, terms_dict: Dict[str, str], category: str = "LLM_Discovered"):
@@ -191,7 +208,7 @@ class GlossaryManager:
             except Exception as e:
                 logger.error(f"持久化新术语失败: {e}")
 
-    async def fetch_names_with_llm(self, text: str, config: TranslationConfig) -> Dict[str, str]:
+    async def fetch_names_with_llm(self, text: str, config: TranslationConfig, force_enable: bool = False) -> Dict[str, str]:
         """【统一入口】使用 LLM 识别文本中的人名，并自动从人名库匹配译名"""
         if not text.strip(): return {}
         templates = get_prompt_templates(config.target_lang)
@@ -202,9 +219,7 @@ class GlossaryManager:
         ner_config.api_url = config.ner_api_url
         try:
             raw_res = await call_llm(ner_config, ner_msgs, temperature=0.0, response_format={"type": "json_object"})
-            print(f"\nDEBUG [NER Raw]: {raw_res}") 
             data = clean_and_extract_json(raw_res)
-            print(f"DEBUG [NER Parsed]: {data}")
             
             extracted_names = []
             if isinstance(data, dict):
@@ -219,14 +234,14 @@ class GlossaryManager:
                 extracted_names = []
                 
             if not extracted_names: return {}
-            return self.search_names("", known_names=extracted_names)
+            return self.search_names("", known_names=extracted_names, force_enable=force_enable)
         except Exception as e:
             logger.error(f"LLM 辅助人名识别失败: {e}")
             return {}
 
-    def search_names(self, text: str, exclude_list: List[str] = None, known_names: List[str] = None) -> Dict[str, str]:
+    def search_names(self, text: str, exclude_list: List[str] = None, known_names: List[str] = None, force_enable: bool = False) -> Dict[str, str]:
         """从文本中提取人名并在库中查询。如果提供了 known_names，则直接使用已知名单。"""
-        if not self.enable_names_db or not Path(self.names_db_path).exists(): return {}
+        if not (self.enable_names_db or force_enable) or not Path(self.names_db_path).exists(): return {}
         
         # 准备最终的排除名单：外部传入的 + 内存中已有的主库词条
         final_excludes = set()

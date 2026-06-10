@@ -27,6 +27,7 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 from core.config import TranslationConfig, TranslationArgs, save_config_to_presets, load_presets, save_presets, CACHE_DIR, clear_cache
+from core.cache_utils import get_cache_path
 from translate_srt_llm import run_translation
 
 # 动态加载工具子模块
@@ -84,6 +85,9 @@ class SubtitleTranslatorApp:
         self.format_var = tk.StringVar(value="ass")
         self.bilingual_var = tk.BooleanVar(value=True)
         self.target_lang_var = tk.StringVar(value="zh")
+        
+        # 绑定格式变化事件，自动更新输出文件后缀
+        self.format_var.trace_add("write", self._on_format_changed)
         
         # 高级配置 (初始化为默认值)
         default_config = TranslationConfig()
@@ -397,14 +401,19 @@ class SubtitleTranslatorApp:
             self.progress_label.config(text=f"{int(percent)}%")
         self.root.after(0, _update)
 
+    def _on_format_changed(self, *args):
+        out = self.output_file.get()
+        if out:
+            base, _ = os.path.splitext(out)
+            self.output_file.set(f"{base}.{self.format_var.get()}")
+
     def browse_input(self):
         filetypes = [("Media Files", "*.mkv *.srt *.ass"), ("All Files", "*.*")]
         path = filedialog.askopenfilename(filetypes=filetypes)
         if path:
             self.input_file.set(path)
-            if not self.output_file.get():
-                base, _ = os.path.splitext(path)
-                self.output_file.set(f"{base}.{self.format_var.get()}")
+            base, _ = os.path.splitext(path)
+            self.output_file.set(f"{base}.{self.format_var.get()}")
 
     def browse_output(self):
         path = filedialog.asksaveasfilename(defaultextension=f".{self.format_var.get()}")
@@ -448,12 +457,14 @@ class SubtitleTranslatorApp:
                 logger.error("无效的输入文件或预处理失败。")
                 return
 
-            cache_dir = CACHE_DIR
-            input_filename = os.path.basename(working_srt)
-            file_hash = hashlib.md5(input_filename.encode('utf-8')).hexdigest()
-            
             if final_fmt == "ass":
-                translated_srt = os.path.join(cache_dir, f"translated_{file_hash}.srt")
+                translated_srt = get_cache_path(
+                    input_file=working_srt,
+                    purpose="translated",
+                    target_lang=self.target_lang_var.get(),
+                    model_name=self.model_var.get(),
+                    extension=".srt"
+                )
             else:
                 translated_srt = output_path if output_path else os.path.splitext(input_path)[0] + ".srt"
 

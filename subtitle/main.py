@@ -11,7 +11,7 @@ from typing import List
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from core.config import TranslationConfig, TranslationArgs, CACHE_DIR
-from core.cache_utils import build_file_cache_key
+from core.cache_utils import get_cache_path
 from translate_srt_llm import run_translation
 
 # 动态加载子模块
@@ -85,15 +85,14 @@ async def main():
         working_srt = extract_tool.convert_ass_file_to_srt(input_path)
 
     # 2. 翻译
-    cache_dir = CACHE_DIR
-    file_hash = build_file_cache_key(
-        input_file=working_srt,
-        target_lang=target_lang,
-        model_name=args.model or ""
-    )
-    
     if final_format == "ass":
-        translated_srt = os.path.join(cache_dir, f"translated_{file_hash}.srt")
+        translated_srt = get_cache_path(
+            input_file=working_srt,
+            purpose="translated",
+            target_lang=target_lang,
+            model_name=args.model or "",
+            extension=".srt"
+        )
     else:
         translated_srt = final_output
 
