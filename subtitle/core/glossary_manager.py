@@ -4,14 +4,26 @@ import sqlite3
 import hashlib
 import logging
 import re
+import sys
 import asyncio
 from pathlib import Path
 from typing import Dict, List, Optional
 from flashtext import KeywordProcessor
 
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+if hasattr(sys.stderr, 'reconfigure'):
+    try:
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 # 导入配置和底层组件
 from .config import GLOSSARY_DIR, GLOSSARY_DB_PATH, LLM_DISCOVERY_DB_PATH, LLM_DISCOVERY_CN_DB_PATH, NAMES_DB_PATH, TranslationConfig
-from .llm_client import call_llm, clean_and_extract_json
+from network.llm_client import call_llm, clean_and_extract_json
 from .prompts import get_prompt_templates
 
 logger = logging.getLogger(__name__)
@@ -50,7 +62,7 @@ class GlossaryManager:
         self._load_to_memory(reverse=reverse, load_discovery=actual_load_discovery)
         self._initialized = True
         mode = "中->英 (反向)" if reverse else "英->中 (正向)"
-        print(f"✅ 语料库初始化完毕 [{mode}]: 内存中包含 {len(self.term_mapping)} 个术语")
+        logger.info(f"✅ 语料库初始化完毕 [{mode}]: 内存中包含 {len(self.term_mapping)} 个术语")
 
 
     def _init_db(self, db_path):

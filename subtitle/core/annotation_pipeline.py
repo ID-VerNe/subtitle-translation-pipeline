@@ -4,7 +4,7 @@ import logging
 from typing import List, Dict, OrderedDict
 from collections import OrderedDict as ODict
 
-from .llm_client import call_llm, clean_and_extract_json
+from network.llm_client import call_llm, clean_and_extract_json
 from .prompts import load_prompt
 from .cache_utils import canonical_json
 
@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 async def extract_annotations_batch(
     config, 
     blocks: List[Dict],
-    genre: str = "未知"
+    genre: str = "未知",
+    domain_context: str = ""
 ) -> List[Dict]:
     """
     对一批字幕块提取需要注释的术语。
@@ -22,6 +23,7 @@ async def extract_annotations_batch(
     Args:
         blocks: [{"index": 1, "original": "...", "polished": "..."}]
         genre: 影片类型
+        domain_context: 领域/背景上下文
     
     Returns:
         [{"subtitle_id": 15, "term": "LAMMA", "explanation": "..."}]
@@ -41,6 +43,7 @@ async def extract_annotations_batch(
         "role": "user",
         "content": prompt_template.format(
             genre=genre,
+            domain_context=domain_context,
             json_input=canonical_json(input_data)
         )
     }]
@@ -94,6 +97,7 @@ async def generate_annotations_for_subtitle(
     config,
     translated_blocks: List[Dict],
     genre: str = "未知",
+    domain_context: str = "",
     batch_size: int = 150
 ) -> Dict[int, str]:
     """
@@ -102,6 +106,7 @@ async def generate_annotations_for_subtitle(
     Args:
         translated_blocks: 已翻译的字幕块列表
         genre: 影片类型
+        domain_context: 领域/背景上下文
         batch_size: 每批扫描的字幕数量
     
     Returns:
@@ -117,7 +122,7 @@ async def generate_annotations_for_subtitle(
         print(f"  扫描批次 {i//batch_size + 1}: ID {batch[0]['index']}-{batch[-1]['index']}")
         
         try:
-            batch_annotations = await extract_annotations_batch(config, batch, genre)
+            batch_annotations = await extract_annotations_batch(config, batch, genre=genre, domain_context=domain_context)
             all_annotations.extend(batch_annotations)
         except Exception as e:
             logger.error(f"批次 {i//batch_size + 1} 注释提取失败: {e}")

@@ -4,7 +4,6 @@ import json
 import re
 import time
 import asyncio
-import aiohttp
 import logging
 import hashlib
 from typing import List, Dict, Optional, Union

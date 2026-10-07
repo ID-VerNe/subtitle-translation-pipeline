@@ -7,6 +7,17 @@ import hashlib
 import logging
 from typing import List
 
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+if hasattr(sys.stderr, 'reconfigure'):
+    try:
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 # 添加当前目录到路径，确保可以导入核心模块
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -14,23 +25,12 @@ from core.config import TranslationConfig, TranslationArgs, CACHE_DIR
 from core.cache_utils import get_cache_path
 from translate_srt_llm import run_translation
 
-# 动态加载子模块
-import importlib.util
-
-# @lat: [[entries#Key Concepts#CLI 总控入口（main.py）]]
-def load_module(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-# 获取子工具路径
+from media.extractor import (
+    extract_subtitles_from_mkv,
+    convert_ass_to_srt,
+    generate_ass_from_srt
+)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-EXTRACT_TOOL_PATH = os.path.join(BASE_DIR, "pre-process", "01-extract_srt.py")
-ASS_TOOL_PATH = os.path.join(BASE_DIR, "post-process", "02-post_process_ass.py")
-
-extract_tool = load_module("extract_tool", EXTRACT_TOOL_PATH)
-ass_tool = load_module("ass_tool", ASS_TOOL_PATH)
 
 # 配置日志
 logging.basicConfig(
@@ -76,7 +76,7 @@ async def main():
     working_srt = None
     if input_path.lower().endswith(".mkv"):
         logger.info(f"检测到 MKV 文件，正在提取字幕...")
-        srt_files = extract_tool.extract_subtitles(input_path)
+        srt_files = extract_subtitles_from_mkv(input_path)
         if srt_files: working_srt = srt_files[0]
         else:
             logger.error("MKV 字幕提取失败。")
@@ -85,7 +85,7 @@ async def main():
         working_srt = input_path
     elif input_path.lower().endswith(".ass"):
         logger.info("检测到 ASS 文件，正在转换为 SRT 以进行翻译...")
-        working_srt = extract_tool.convert_ass_file_to_srt(input_path)
+        working_srt = convert_ass_to_srt(input_path)
 
     # 2. 翻译
     if final_format == "ass":
@@ -127,7 +127,7 @@ async def main():
                 logger.info(f"使用带注释的字幕文件: {annotation_srt}")
                 source_srt = annotation_srt
         
-        ass_tool.srt_to_ass(source_srt, head_path, final_output)
+        generate_ass_from_srt(source_srt, final_output, head_path=head_path)
         logger.info(f"✅ 完成！最终字幕文件已生成: {os.path.abspath(final_output)}")
     else:
         logger.info(f"✅ 完成！最终字幕文件已生成: {os.path.abspath(final_output)}")

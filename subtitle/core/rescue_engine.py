@@ -5,7 +5,7 @@ import logging
 import re
 from typing import List, Dict, Tuple
 
-from core.llm_client import call_llm, clean_and_extract_json, REFUSAL_SENTINEL
+from network.llm_client import call_llm, clean_and_extract_json, REFUSAL_SENTINEL
 from core.prompts import get_prompt_templates
 from core.cache_utils import canonical_json
 

@@ -8,6 +8,10 @@ import pyperclip
 
 # 配置路径
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+GLOSSARY_DIR = os.path.join(PROJECT_ROOT, "subtitle", "glossaries")
+if not os.path.exists(GLOSSARY_DIR):
+    GLOSSARY_DIR = CURRENT_DIR
 
 class GlossaryManagerApp:
     def __init__(self, root):
@@ -59,7 +63,7 @@ class GlossaryManagerApp:
     def load_existing_db(self):
         """扫描当前目录下所有 json，加载 source_term 到内存"""
         self.existing_terms.clear()
-        json_files = glob.glob(os.path.join(CURRENT_DIR, "*.json"))
+        json_files = glob.glob(os.path.join(GLOSSARY_DIR, "*.json"))
         
         count = 0
         for fpath in json_files:
@@ -79,7 +83,7 @@ class GlossaryManagerApp:
 
     def get_next_filename(self):
         """获取下一个可用的数字文件名，例如 14.json"""
-        json_files = glob.glob(os.path.join(CURRENT_DIR, "*.json"))
+        json_files = glob.glob(os.path.join(GLOSSARY_DIR, "*.json"))
         max_num = 0
         for fpath in json_files:
             basename = os.path.basename(fpath)
@@ -230,7 +234,7 @@ class GlossaryManagerApp:
 
         # 2. 获取文件名
         filename = self.get_next_filename()
-        filepath = os.path.join(CURRENT_DIR, filename)
+        filepath = os.path.join(GLOSSARY_DIR, filename)
 
         # 3. 写入
         try:

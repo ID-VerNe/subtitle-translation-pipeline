@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from typing import List, Dict
 
-from core.llm_client import call_llm, clean_and_extract_json
+from network.llm_client import call_llm, clean_and_extract_json
 from core.cache_utils import load_json_file, save_json_file, canonical_json, get_cache_path
 from core.prompts import load_prompt
 

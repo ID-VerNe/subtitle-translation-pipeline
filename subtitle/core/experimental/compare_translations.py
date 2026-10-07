@@ -11,9 +11,15 @@ from typing import List, Dict
 from collections import Counter
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(BASE_DIR))
+# 确保 subtitle 目录在 sys.path
+SUBTITLE_DIR = os.path.dirname(os.path.dirname(BASE_DIR))
+if SUBTITLE_DIR not in sys.path:
+    sys.path.insert(0, SUBTITLE_DIR)
 
-from core.quality_checker import TranslationQualityChecker
+try:
+    from .quality_checker import TranslationQualityChecker
+except ImportError:
+    from core.experimental.quality_checker import TranslationQualityChecker
 from core.srt_utils import parse_srt
 
 class TranslationComparator:

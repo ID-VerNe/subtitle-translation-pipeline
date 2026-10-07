@@ -1,6 +1,6 @@
 import logging
 from typing import List, Dict
-from core.llm_client import call_llm
+from network.llm_client import call_llm, clean_and_extract_json
 from core.config import TranslationConfig
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ async def run_asr_scrub(blocks: List[Dict], scrub_config: TranslationConfig) -> 
         corrections = []
         if raw:
             try:
-                from core.llm_client import clean_and_extract_json
+                from network.llm_client import clean_and_extract_json
                 data = clean_and_extract_json(raw)
                 if isinstance(data, dict) and "corrections" in data:
                     corrections = data["corrections"]

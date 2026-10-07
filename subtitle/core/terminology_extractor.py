@@ -2,7 +2,7 @@
 from typing import List, Dict
 from tqdm import tqdm
 
-from core.llm_client import call_llm, call_llm_batch, clean_and_extract_json, get_load_balancer_stats
+from network.llm_client import call_llm, call_llm_batch, clean_and_extract_json, get_load_balancer_stats
 from core.prompts import get_prompt_templates
 from core.glossary_manager import glossary_manager
 from core.glossary_sanitizer import sanitize_glossary

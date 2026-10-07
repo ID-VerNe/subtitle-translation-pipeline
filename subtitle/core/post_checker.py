@@ -3,7 +3,7 @@ import re
 import json
 import logging
 from typing import List, Dict, Tuple, Optional
-from .llm_client import call_llm, clean_and_extract_json
+from network.llm_client import call_llm, clean_and_extract_json
 from .config import TranslationConfig
 
 logger = logging.getLogger(__name__)

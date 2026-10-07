@@ -147,8 +147,9 @@ def parse_srt(file_path):
     return parsed_lines
 
 def main():
-    # 获取脚本所在目录
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    # 获取目标目录：支持传参，默认当前工作目录
+    import sys
+    base_dir = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.getcwd()
     
     # 递归获取当前目录及子目录下所有的 .ass 和 .srt
     all_files = []

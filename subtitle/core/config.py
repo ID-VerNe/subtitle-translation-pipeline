@@ -231,7 +231,7 @@ def save_config_to_presets(config_dict: dict, preset_name: str = "Default"):
 
 # @lat: [[core-common#Key Concepts#配置体系（config.py）]]
 class TranslationArgs:
-    def __init__(self, input_file, output_file, bilingual, model_name=None, batch_size=None, target_lang="zh"):
+    def __init__(self, input_file, output_file, bilingual, model_name=None, batch_size=None, target_lang="zh", enable_names_db=None, enable_annotations=False, enforce_consistency=True):
         self.input_file = input_file
         self.output_file = output_file
         self.bilingual = bilingual
@@ -260,7 +260,9 @@ class TranslationArgs:
         self.temp_literal = config.temp_literal
         self.temp_polish = config.temp_polish
         self.enable_llm_discovery = config.enable_llm_discovery
-        self.enable_names_db = config.enable_names_db
+        self.enable_names_db = enable_names_db if enable_names_db is not None else config.enable_names_db
+        self.enable_annotations = enable_annotations
+        self.enforce_consistency = enforce_consistency
         self.claude_cli_mode = config.claude_cli_mode
         self.codex_mode = config.codex_mode
         self.progress_file = None

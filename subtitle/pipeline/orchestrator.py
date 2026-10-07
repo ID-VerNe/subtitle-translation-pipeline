@@ -1,34 +1,47 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import json
 import asyncio
 import logging
 from typing import List, Dict
 from tqdm import tqdm
 
-from core.config import TranslationConfig
-from core.srt_utils import parse_srt
-from core.translation_pipeline import (
-    extract_global_terms, 
-    process_literal_stage, 
-    process_polish_stage, 
-    build_recent_state,
-    build_core_terms
-)
-from core.global_memory import (
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+if hasattr(sys.stderr, 'reconfigure'):
+    try:
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
+from core.config import TranslationConfig, PRESETS_FILE
+from core.srt_utils import parse_srt, format_srt_block
+from core.terminology_extractor import extract_global_terms
+from core.stages.literal_stage import process_literal_stage
+from core.stages.polish_stage import process_polish_stage
+from core.context_builder import build_recent_state, build_core_terms
+from core.memory.global_profile import (
     load_or_build_global_profile,
-    global_profile_text,
+    global_profile_text
+)
+from core.memory.policy_engine import (
     build_translation_policy,
     policy_text,
+    normalize_translation_policy
+)
+from core.memory.scene_manager import (
     load_or_build_scene_map,
     find_scene_for_block,
     scene_guidance_text,
     build_scene_aligned_batches,
-    normalize_translation_policy,
     normalize_scene
 )
-from core.llm_client import close_session_pool
+from network.llm_client import close_session_pool
 from core.glossary_manager import glossary_manager
 from core.cache_utils import canonical_json, get_cache_path
 
@@ -79,6 +92,7 @@ async def self_enforce_consistency(args, config, glossary, global_profile="{}", 
 # @lat: [[pipeline#Key Concepts#翻译主流程（run_translation）]]
 async def run_translation(args, progress_callback=None):
     target_lang = getattr(args, 'target_lang', 'zh')
+    enable_names_db = getattr(args, 'enable_names_db', False)
     config = TranslationConfig(
         api_key=args.api_key,
         api_url=args.api_url,
@@ -96,10 +110,12 @@ async def run_translation(args, progress_callback=None):
         pass_temperature=getattr(args, 'pass_temperature', True),
         target_lang=target_lang,
         enable_llm_discovery=getattr(args, 'enable_llm_discovery', True),
+        enable_names_db=enable_names_db,
         reasoning_effort=getattr(args, 'reasoning_effort', ""),
     )
     
     should_reverse = (target_lang == 'en')
+    glossary_manager.enable_names_db = config.enable_names_db
     glossary_manager.initialize(reverse=should_reverse)
 
     glossary_cache_file = getattr(args, 'glossary_cache_file', None)
@@ -173,14 +189,19 @@ async def run_translation(args, progress_callback=None):
     remaining_blocks = [b for b in blocks if b['index'] not in processed_indices]
 
     if getattr(args, 'scrub_model', None):
-        with open('presets.json', 'r', encoding='utf-8') as f:
-            presets = json.load(f)
+        presets = {}
+        if os.path.exists(PRESETS_FILE):
+            try:
+                with open(PRESETS_FILE, 'r', encoding='utf-8') as f:
+                    presets = json.load(f)
+            except Exception as e:
+                logger.warning(f"读取预设文件失败: {e}")
         if args.scrub_model in presets:
             p = presets[args.scrub_model]
             scrub_config = TranslationConfig()
-            scrub_config.api_key = p['api_key']
-            scrub_config.base_url = p['api_url'].replace('/chat/completions', '')
-            scrub_config.model_name = p['model_name']
+            scrub_config.api_key = p.get('api_key', '')
+            scrub_config.api_url = p.get('api_url', scrub_config.api_url)
+            scrub_config.model_name = p.get('model_name', '')
             scrub_config.max_tokens = int(p.get('max_tokens', 4096))
             scrub_config.reasoning_effort = p.get('reasoning_effort', 'none')
             
@@ -352,6 +373,7 @@ async def run_translation(args, progress_callback=None):
                     config, 
                     final_blocks, 
                     genre=genre,
+                    domain_context=global_profile_str,
                     batch_size=150
                 )
                 
