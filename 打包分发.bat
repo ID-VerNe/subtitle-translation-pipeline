@@ -1,4 +1,8 @@
 @echo off
 chcp 65001 >nul
-python "%~dp0distribute.py"
+if exist "%~dp0python_embed\python.exe" (
+    "%~dp0python_embed\python.exe" "%~dp0distribute.py"
+) else (
+    python "%~dp0distribute.py"
+)
 pause

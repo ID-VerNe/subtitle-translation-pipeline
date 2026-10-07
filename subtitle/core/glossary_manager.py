@@ -226,7 +226,11 @@ class GlossaryManager:
         if not text.strip(): return {}
         templates = get_prompt_templates(config.target_lang)
         ner_msgs = [{"role": "user", "content": templates["NER_NAMES"].format(content=text)}]
-        ner_config = type(config)(**vars(config))
+        from dataclasses import replace, is_dataclass
+        if is_dataclass(config):
+            ner_config = replace(config)
+        else:
+            ner_config = type(config)(**{k: v for k, v in vars(config).items() if k != 'api_keys'})
         ner_config.model_name = config.ner_model_name
         ner_config.api_key = config.ner_api_key
         ner_config.api_url = config.ner_api_url

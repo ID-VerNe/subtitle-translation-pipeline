@@ -56,6 +56,8 @@ async def main():
     parser.add_argument("--batch-size", type=int, help="覆盖 presets.json 中的批次大小")
     parser.add_argument("--enable-names-db", action="store_true", help="启用人名数据库 (默认禁用)")
     parser.add_argument("--enable-annotations", action="store_true", help="启用注释生成 (默认禁用)")
+    parser.add_argument("--api-key", type=str, help="覆盖 presets.json 中的 API Key")
+    parser.add_argument("--api-url", type=str, help="覆盖 presets.json 中的 API URL")
     
     args = parser.parse_args()
 
@@ -104,7 +106,9 @@ async def main():
         bilingual=args.bilingual,
         model_name=args.model,
         batch_size=args.batch_size,
-        target_lang=target_lang
+        target_lang=target_lang,
+        api_key=args.api_key,
+        api_url=args.api_url
     )
     if args.enable_names_db:
         trans_args.enable_names_db = True

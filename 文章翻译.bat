@@ -11,6 +11,10 @@ if not exist "python_embed\python.exe" (
     exit /b 1
 )
 
+REM 配置嵌入式 Tcl/Tk 环境变量
+set "TCL_LIBRARY=%~dp0python_embed\Lib\site-packages\tcl\tcl8.6"
+set "TK_LIBRARY=%~dp0python_embed\Lib\site-packages\tcl\tk8.6"
+
 echo 正在启动 WebUI Prompt Helper...
 "python_embed\python.exe" "subtitle\webui_gui.py"
 

@@ -11,6 +11,10 @@ if not exist "python_embed\python.exe" (
     exit /b 1
 )
 
+REM 配置嵌入式 Tcl/Tk 环境变量
+set "TCL_LIBRARY=%~dp0python_embed\Lib\site-packages\tcl\tcl8.6"
+set "TK_LIBRARY=%~dp0python_embed\Lib\site-packages\tcl\tk8.6"
+
 REM 初始化变量
 set "ENABLE_NAMES_DB=False"
 
@@ -21,7 +25,7 @@ REM 显示状态
 if "%ENABLE_NAMES_DB%"=="True" (
     echo [信息] 已启用人名数据库。
 ) else (
-    echo [信息] 人名数据库已禁用 (默认值)。使用 /names 参数可启用。
+    echo [信息] 人名数据库已禁用 [默认值]。使用 /names 参数可启用。
 )
 
 echo 正在启动 Subtitle Translator GUI...

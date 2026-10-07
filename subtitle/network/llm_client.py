@@ -8,6 +8,7 @@ import logging
 import hashlib
 from typing import List, Dict, Optional, Union
 from json_repair import repair_json
+from core.config import normalize_api_url
 from .request_handler import AsyncRateLimitedSession, LoadBalancedSession, SmartLoadBalancer
 
 
@@ -205,7 +206,8 @@ async def _do_llm_request(session, config, payload: dict, timeout: int = 1200) -
     if any(k in config.model_name.lower() for k in ("sensenova",)):
         timeout = max(timeout, 1200)
 
-    response = await session.post(config.api_url, json=payload, timeout=timeout)
+    api_url = normalize_api_url(getattr(config, 'api_url', ''))
+    response = await session.post(api_url, json=payload, timeout=timeout)
     
     if response.status == 429:
         raise Exception("Rate limited (429)")

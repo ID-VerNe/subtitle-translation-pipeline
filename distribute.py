@@ -23,7 +23,7 @@ if hasattr(sys.stdout, 'reconfigure'):
         pass
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-DIST_NAME = "subtitle pipeline source"
+DIST_NAME = "_dist_staging"
 DIST_PATH = os.path.join(ROOT, DIST_NAME)
 
 # 要复制的组件
@@ -140,7 +140,9 @@ def main():
 
     with open(presets_json, "w", encoding="utf-8") as f:
         json.dump(single_preset, f, indent=4, ensure_ascii=False)
-    print("  Created new presets.json (single glm-5.2 preset)")
+    with open(presets_example, "w", encoding="utf-8") as f:
+        json.dump(single_preset, f, indent=4, ensure_ascii=False)
+    print("  Created new presets.json and presets.json.example (single glm-5.2 preset)")
 
     # 5. Create ZIP
     if os.path.exists(zip_path):

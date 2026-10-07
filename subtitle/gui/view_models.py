@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import logging
 import tkinter as tk
 from core.config import TranslationConfig
@@ -38,7 +39,8 @@ class AppViewModel:
         self.temp_polish_var = tk.DoubleVar(value=float(default_config.temp_polish))
         
         self.enable_discovery_var = tk.BooleanVar(value=bool(default_config.enable_llm_discovery))
-        self.enable_names_db_var = tk.BooleanVar(value=bool(default_config.enable_names_db))
+        env_names_db = os.environ.get("ENABLE_NAMES_DB", "").lower() == "true"
+        self.enable_names_db_var = tk.BooleanVar(value=bool(default_config.enable_names_db or env_names_db))
         self.enable_annotations_var = tk.BooleanVar(value=False)
         
         # Extended Advanced settings

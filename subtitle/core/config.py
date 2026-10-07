@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 import os
+import re
 import json
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 # --- 基础路径 ---
 # 获取 config.py 所在的目录 (subtitle/core)
@@ -52,64 +53,77 @@ def save_presets(presets):
     except Exception as e:
         print(f"保存预设失败: {e}")
 
+def normalize_api_url(url: str) -> str:
+    """确保 API URL 规范化，自动补全 /chat/completions"""
+    if not url:
+        return ""
+    url = url.strip()
+    while url.endswith('/'):
+        url = url[:-1]
+    if url.endswith('/chat/completions'):
+        return url
+    if re.search(r'/v\d+([a-zA-Z0-9_-]*)?$', url):
+        return f"{url}/chat/completions"
+    return f"{url}/v1/chat/completions"
+
 # @lat: [[core-common#Key Concepts#配置体系（config.py）]]
 @dataclass
 class TranslationConfig:
     # --- API 配置 ---
-    api_key: str = ""
-    api_url: str = "http://localhost:19183/v1/chat/completions"
-    model_name: str = "openai/gpt-oss-20b"
+    api_key: Optional[str] = None
+    api_url: Optional[str] = None
+    model_name: Optional[str] = None
     
     # 自动解析的多 Key 列表
     api_keys: List[str] = field(init=False, default_factory=list)
     
     # --- NER 专用 API 配置 (智能回退逻辑) ---
-    ner_api_key: str = ""
-    ner_api_url: str = ""
-    ner_model_name: str = ""
+    ner_api_key: Optional[str] = None
+    ner_api_url: Optional[str] = None
+    ner_model_name: Optional[str] = None
     
     # --- 并发控制 ---
-    max_concurrent_requests: int = 4
-    rpm_limit: int = 60
-    tpm_limit: int = 100000
-    batch_size: int = 8
+    max_concurrent_requests: Optional[int] = None
+    rpm_limit: Optional[int] = None
+    tpm_limit: Optional[int] = None
+    batch_size: Optional[int] = None
     
     # --- 容错配置 ---
-    max_retries: int = 3
-    retry_delay: float = 2.0
-    max_tokens: int = 8192
+    max_retries: Optional[int] = None
+    retry_delay: Optional[float] = None
+    max_tokens: Optional[int] = None
 
     # --- 上下文预算 (1M 上下文模型) ---
     # 输入上下文预算（远低于 1M 留余量），用于估算单批可塞多少行/记忆。
     # 当前为软约束占位，pipeline 据此决定 recent_state 行数与 batch 上限。
-    context_budget_tokens: int = 200000
+    context_budget_tokens: Optional[int] = None
     # 跨 batch 记忆锚点行数（原硬编码 2 行，1M 上下文下拉到 25-30）
-    max_previous_lines: int = 25
+    max_previous_lines: Optional[int] = None
 
     # --- 推理力度 (支持 reasoning_effort 的模型，如 SenseNova) ---
     # 可选: low / medium / high / none。空字符串表示不传该字段（模型默认行为）。
     # 输出慢的推理模型设为 "none" 可跳过 reasoning 阶段，大幅降低延迟。
-    reasoning_effort: str = ""
+    reasoning_effort: Optional[str] = None
     
     # --- 语料库配置 ---
     glossary_dir: str = GLOSSARY_DIR
     glossary_db_path: str = GLOSSARY_DB_PATH
     llm_discovery_db_path: str = LLM_DISCOVERY_DB_PATH
-    enable_llm_discovery: bool = True
-    enable_names_db: bool = False
+    enable_llm_discovery: Optional[bool] = None
+    enable_names_db: Optional[bool] = None
     
     # [新增] 目标语言，默认中文 'zh'，可选英文 'en' 
-    target_lang: str = "zh" 
+    target_lang: Optional[str] = None
     
     # --- LLM 温度配置 ---
-    pass_temperature: bool = True
-    temp_terms: float = 0.1
-    temp_literal: float = 0.3
-    temp_polish: float = 0.5
+    pass_temperature: Optional[bool] = None
+    temp_terms: Optional[float] = None
+    temp_literal: Optional[float] = None
+    temp_polish: Optional[float] = None
 
     # --- Claude Code CLI / Codex TUI 模仿模式 ---
-    claude_cli_mode: bool = False
-    codex_mode: bool = False
+    claude_cli_mode: Optional[bool] = None
+    codex_mode: Optional[bool] = None
 
     def __post_init__(self):
         # 尝试从 presets.json 加载
@@ -126,37 +140,59 @@ class TranslationConfig:
             if valid_presets:
                 data = next(iter(valid_presets.values()))
 
-        if data:
-            self.api_key = data.get("api_key", self.api_key)
-            self.api_url = data.get("api_url", self.api_url)
-            self.model_name = data.get("model_name", self.model_name)
+        # 仅在未显式提供配置时从 presets 回填，保护传入的非空值
+        if self.api_key is None:
+            self.api_key = data.get("api_key", "")
+        if self.api_url is None:
+            self.api_url = data.get("api_url", "http://localhost:19183/v1/chat/completions")
+        if self.model_name is None:
+            self.model_name = data.get("model_name", "openai/gpt-oss-20b")
 
-            self.max_concurrent_requests = int(data.get("max_concurrent", data.get("max_concurrent_requests", self.max_concurrent_requests)))
-            self.rpm_limit = int(data.get("rpm_limit", self.rpm_limit))
-            self.tpm_limit = int(data.get("tpm_limit", self.tpm_limit))
-            self.batch_size = int(data.get("batch_size", self.batch_size))
+        if self.max_concurrent_requests is None:
+            self.max_concurrent_requests = int(data.get("max_concurrent", data.get("max_concurrent_requests", 4)))
+        if self.rpm_limit is None:
+            self.rpm_limit = int(data.get("rpm_limit", 60))
+        if self.tpm_limit is None:
+            self.tpm_limit = int(data.get("tpm_limit", 100000))
+        if self.batch_size is None:
+            self.batch_size = int(data.get("batch_size", 8))
 
-            self.max_retries = int(data.get("max_retries", self.max_retries))
-            self.retry_delay = float(data.get("retry_delay", self.retry_delay))
-            self.max_tokens = int(data.get("max_tokens", self.max_tokens))
+        if self.max_retries is None:
+            self.max_retries = int(data.get("max_retries", 3))
+        if self.retry_delay is None:
+            self.retry_delay = float(data.get("retry_delay", 2.0))
+        if self.max_tokens is None:
+            self.max_tokens = int(data.get("max_tokens", 8192))
 
-            self.context_budget_tokens = int(data.get("context_budget_tokens", self.context_budget_tokens))
-            self.max_previous_lines = int(data.get("max_previous_lines", self.max_previous_lines))
-            self.reasoning_effort = data.get("reasoning_effort", self.reasoning_effort)
+        if self.context_budget_tokens is None:
+            self.context_budget_tokens = int(data.get("context_budget_tokens", 200000))
+        if self.max_previous_lines is None:
+            self.max_previous_lines = int(data.get("max_previous_lines", 25))
+        if self.reasoning_effort is None:
+            self.reasoning_effort = data.get("reasoning_effort", "")
 
-            self.enable_llm_discovery = str(data.get("enable_discovery", data.get("enable_llm_discovery", self.enable_llm_discovery))).lower() == "true"
-            self.enable_names_db = str(data.get("enable_names_db", self.enable_names_db)).lower() == "true"
+        if self.enable_llm_discovery is None:
+            self.enable_llm_discovery = str(data.get("enable_discovery", data.get("enable_llm_discovery", True))).lower() == "true"
+        if self.enable_names_db is None:
+            self.enable_names_db = str(data.get("enable_names_db", False)).lower() == "true"
 
-            self.pass_temperature = str(data.get("pass_temperature", self.pass_temperature)).lower() == "true"
-            self.temp_terms = float(data.get("temp_terms", self.temp_terms))
-            self.temp_literal = float(data.get("temp_literal", self.temp_literal))
-            self.temp_polish = float(data.get("temp_polish", self.temp_polish))
-            self.target_lang = data.get("target_lang", self.target_lang)
-            self.claude_cli_mode = str(data.get("claude_cli_mode", self.claude_cli_mode)).lower() == "true"
-            self.codex_mode = str(data.get("codex_mode", self.codex_mode)).lower() == "true"
+        if self.pass_temperature is None:
+            self.pass_temperature = str(data.get("pass_temperature", True)).lower() == "true"
+        if self.temp_terms is None:
+            self.temp_terms = float(data.get("temp_terms", 0.1))
+        if self.temp_literal is None:
+            self.temp_literal = float(data.get("temp_literal", 0.3))
+        if self.temp_polish is None:
+            self.temp_polish = float(data.get("temp_polish", 0.5))
+        if self.target_lang is None:
+            self.target_lang = data.get("target_lang", "zh")
+        if self.claude_cli_mode is None:
+            self.claude_cli_mode = str(data.get("claude_cli_mode", False)).lower() == "true"
+        if self.codex_mode is None:
+            self.codex_mode = str(data.get("codex_mode", False)).lower() == "true"
 
-        # 处理多 API Key 情况 (逗号分隔)
-        self.api_keys = [k.strip() for k in self.api_key.split(",") if k.strip()]
+        # 处理多 API Key 情况 (逗号/换行分隔)
+        self.api_keys = [k.strip() for k in re.split(r'[,， \n]+', self.api_key) if k.strip()]
         
         # 如果没有配置 NER 专用 Key，则全部回退到主模型配置
         if not self.ner_api_key:
@@ -167,6 +203,10 @@ class TranslationConfig:
             # 如果配置了 Key 但没配置 URL/Model，则补全
             if not self.ner_api_url: self.ner_api_url = self.api_url
             if not self.ner_model_name: self.ner_model_name = "glm-4-flash"
+
+        # 规范化 API 地址
+        self.api_url = normalize_api_url(self.api_url)
+        self.ner_api_url = normalize_api_url(self.ner_api_url)
 
         # 确保目录存在
         os.makedirs(self.glossary_dir, exist_ok=True)
@@ -231,7 +271,7 @@ def save_config_to_presets(config_dict: dict, preset_name: str = "Default"):
 
 # @lat: [[core-common#Key Concepts#配置体系（config.py）]]
 class TranslationArgs:
-    def __init__(self, input_file, output_file, bilingual, model_name=None, batch_size=None, target_lang="zh", enable_names_db=None, enable_annotations=False, enforce_consistency=True):
+    def __init__(self, input_file, output_file, bilingual, model_name=None, batch_size=None, target_lang="zh", enable_names_db=None, enable_annotations=False, enforce_consistency=True, api_key=None, api_url=None):
         self.input_file = input_file
         self.output_file = output_file
         self.bilingual = bilingual
@@ -240,8 +280,8 @@ class TranslationArgs:
         # 加载基础配置 (从 presets.json 读取)
         config = TranslationConfig()
         
-        self.api_key = config.api_key
-        self.api_url = config.api_url
+        self.api_key = api_key if api_key else config.api_key
+        self.api_url = normalize_api_url(api_url) if api_url else config.api_url
         self.model_name = model_name if model_name else config.model_name
         self.batch_size = batch_size if batch_size else config.batch_size
         
