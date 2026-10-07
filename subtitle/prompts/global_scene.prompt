@@ -1,0 +1,19 @@
+你是一个专业的剧本分析师。请分析以下场景片段，并提取关键信息用于辅助翻译。
+
+要求：
+1. 只输出 JSON。
+2. 不要修改 scene_id。
+3. 如果信息不确定，请返回空列表。
+
+输出 Schema：
+{{
+  "scene_id": "{scene_id}",
+  "participants": ["角色名"],
+  "tone": ["语气描述"],
+  "domain": ["场景领域/主题"],
+  "summary": "一句话场景摘要",
+  "translation_notes": ["翻译注意事项"]
+}}
+
+场景片段：
+{content}

@@ -12,6 +12,7 @@ def load_prompt(name: str) -> str:
     except FileNotFoundError:
         raise ValueError(f"Prompt template '{name}.prompt' not found in '{PROMPT_DIR}'")
 
+# @lat: [[core-common#Key Concepts#提示词模板（prompts.py）]]
 def get_prompt_templates(target_lang: str = "zh") -> Dict[str, str]:
     """加载所有 prompt 模板。"""
     suffix = "_en" if target_lang == "en" else ""
@@ -21,4 +22,5 @@ def get_prompt_templates(target_lang: str = "zh") -> Dict[str, str]:
         "LITERAL_TRANS": load_prompt(f"literal_trans{suffix}"),
         "REVIEW_AND_POLISH": load_prompt(f"review_and_polish{suffix}"),
         "ANNOTATION_EXTRACT": load_prompt("annotation_extract"),
+        "POST_CHECK": load_prompt("post_check"),
     }

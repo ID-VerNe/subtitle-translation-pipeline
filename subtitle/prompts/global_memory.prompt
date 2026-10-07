@@ -1,0 +1,46 @@
+你是字幕翻译项目的全局信息分析器。
+请根据采样字幕，抽取对后续翻译有帮助的全局信息。
+
+要求：
+1. 只输出 JSON。
+2. 不要写解释。
+3. 字段必须稳定。
+4. 如果信息无法判断，使用空字符串或空数组。
+5. 重点关注角色、关系、性别、身份、说话风格、整体题材、整体语气。
+
+输出 JSON schema：
+{{
+  "genre": [],
+  "tone": [],
+  "setting": {{
+    "time": "",
+    "location": "",
+    "world_type": ""
+  }},
+  "characters": [
+    {{
+      "id": "char_xxx",
+      "names": [],
+      "gender": "",
+      "role": "",
+      "speech_style": [],
+      "self_ref": ""
+    }}
+  ],
+  "relationships": [
+    {{
+      "from": "char_xxx",
+      "to": "char_yyy",
+      "type": "",
+      "register": ""
+    }}
+  ],
+  "translation_style": {{
+    "target_lang": "{target_lang}",
+    "style": "影视字幕",
+    "avoid": ["机器直译腔", "过度书面语"]
+  }}
+}}
+
+字幕采样：
+{content}

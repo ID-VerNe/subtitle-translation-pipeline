@@ -4,7 +4,7 @@
 # 约束
 1. 只提取人名，忽略地名、机构名或物品名。
 2. 以 JSON 对象格式返回，键名为 "names"，值为人名数组。
-   示例: {{"names": ["Jeremy Clarkson", "Kaleb Cooper"]}}
+   示例: {{"names": ["John Doe", "Jane Smith"]}}
 3. 如果没有任何人名，请返回 {{"names": []}}。
 4. 不要返回任何解释文字。
 

@@ -16,6 +16,7 @@ from .prompts import get_prompt_templates
 
 logger = logging.getLogger(__name__)
 
+# @lat: [[core-glossary#Key Concepts#术语库管理器（GlossaryManager）]]
 class GlossaryManager:
     def __init__(self):
         self.glossary_dir = Path(GLOSSARY_DIR)

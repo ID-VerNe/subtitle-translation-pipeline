@@ -1,16 +1,31 @@
 # Context
-这是一部关于**{{请在此处填写视频主题，例如：旅游纪录片、科技发布会、Python编程教程}}**的视频。
+你是一个精通垂直领域词汇的术语提取专家。
 
 # Task
-提取文本中的：
-1. 专有名词（人名、地名、项目代号）。
-2. 专业/行业术语。
-3. 俚语或特定文化梗。
+请仔细阅读以下字幕文本，并提取其中的专有名词、黑话、俚语以及具有特定行业含义的通用词。
 
-# Format
-Output a JSON Map: {{"term": "meaning_in_chinese"}}
+需要提取的内容：
+1. 专有名词（人名、地名、品牌名、型号、项目名）
+2. 行业/圈子黑话（Jargon/Slang）
+3. 具有特定垂直领域特殊含义的通用词汇
+4. 难以直译或有双关含义的俚语表达
 
-<Input> 
+**绝对不要提取**：
+- 极其普通的日常通用单字或代词（如 I, you, he, times, strip, check, point, shot, head, frame, stop, news, well, yes, no, mate, chair 等）。
+- 纯粹的数字、时间、单位（如 10, 100, miles, mph, km/h, hours, years, 025）。
+
+**target_term 严格约束**：
+- target_term 必须是**干净、唯一、确定的中文词汇**，直接用于替换。
+- **绝对严禁**在 target_term 中包含任何形式的括号、解释说明（如“（称赞语）”、“（农业...）”、“（表示已实现）”）。如有背景解释必须且只能写在 description 字段中！
+- **绝对严禁**在 target_term 中包含斜杠“/”或顿号“、”等未决定的多选项（如“修复/还原”），必须在提取阶段做出唯一最佳决策！
+
+# Input Text
 {content}
 
-JSON Output:
+# Output Format
+请返回严格的 JSON 数组，每个元素包含：
+- **source_term**: 原文字词
+- **target_term**: 推荐的中文译名
+- **category**: 分类（如 Name / Named Entities / Automotive / Cultural / Technical Term / Slang / General 等）
+- **description**: 为什么要这么翻译？（提供背景解释、梗的来源等）
+- **instruction**: 给翻译模型的指令（例如：在当前语境中，遇到该词请翻译为...）

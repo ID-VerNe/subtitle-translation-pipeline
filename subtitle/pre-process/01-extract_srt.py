@@ -66,6 +66,7 @@ def ass_to_srt(ass_content):
             
     return "\n".join(srt_lines)
 
+# @lat: [[media-process#Key Concepts#前置提取脚本（01-extract_srt.py）]]
 def convert_ass_file_to_srt(ass_path):
     """读取 ASS 文件并转换为 SRT 文件，返回新的 SRT 文件路径"""
     try:
@@ -91,6 +92,7 @@ def convert_ass_file_to_srt(ass_path):
 # Part 2: MKV 提取逻辑
 # --------------------------------------------------------------------------- 
 
+# @lat: [[media-process#Key Concepts#前置提取脚本（01-extract_srt.py）]]
 def extract_subtitles(mkv_path):
     """
     从 MKV 文件中提取字幕。如果提取出的是 ASS，自动转换为 SRT。

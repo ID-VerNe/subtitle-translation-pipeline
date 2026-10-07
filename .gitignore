@@ -32,3 +32,8 @@ venv_subtitle/
 *.zip
 *.tar.gz
 *.iso
+outputs/
+.plan/
+.handoffs/
+.workbuddy/
+lat.md/

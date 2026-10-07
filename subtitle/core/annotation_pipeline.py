@@ -10,6 +10,7 @@ from .cache_utils import canonical_json
 
 logger = logging.getLogger(__name__)
 
+# @lat: [[core-quality#Key Concepts#注解管线（Annotation Pipeline）]]
 async def extract_annotations_batch(
     config, 
     blocks: List[Dict],
@@ -30,8 +31,8 @@ async def extract_annotations_batch(
     input_data = [
         {
             "id": int(b['index']),
-            "original": b['original'],
-            "translation": b['polished']
+            "original": b.get('original', ''),
+            "translation": b.get('polished', b.get('content', ''))
         }
         for b in blocks
     ]
@@ -88,6 +89,7 @@ async def extract_annotations_batch(
         return []
 
 
+# @lat: [[core-quality#Key Concepts#注解管线（Annotation Pipeline）]]
 async def generate_annotations_for_subtitle(
     config,
     translated_blocks: List[Dict],
@@ -130,10 +132,23 @@ async def generate_annotations_for_subtitle(
     
     for anno in all_annotations:
         term = anno.get('term', '').strip()
-        subtitle_id = anno.get('subtitle_id')
+        raw_subtitle_id = anno.get('subtitle_id')
         explanation = anno.get('explanation', '').strip()
         
-        if not term or not explanation:
+        # 防御性 ID 转换
+        try:
+            if isinstance(raw_subtitle_id, int):
+                subtitle_id = raw_subtitle_id
+            elif isinstance(raw_subtitle_id, str):
+                import re
+                match = re.search(r'\d+', raw_subtitle_id)
+                subtitle_id = int(match.group()) if match else None
+            else:
+                subtitle_id = int(raw_subtitle_id) if raw_subtitle_id else None
+        except (ValueError, TypeError):
+            subtitle_id = None
+        
+        if not term or not explanation or subtitle_id is None:
             continue
         
         # 规范化术语（用于去重）

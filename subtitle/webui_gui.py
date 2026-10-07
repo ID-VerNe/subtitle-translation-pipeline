@@ -26,6 +26,7 @@ try:
 except ImportError:
     GLOSSARY_AVAILABLE = False
 
+# @lat: [[entries#Key Concepts#WebUI 入口（webui_gui.py）]]
 class WebUiGui:
     def __init__(self, root):
         self.root = root
@@ -93,7 +94,7 @@ class WebUiGui:
             ("步骤 2: 直译", self.gen_step_2),
             ("步骤 3: 找茬审校", self.gen_step_3),
             ("步骤 4A: 最终意译", self.gen_step_4a),
-            ("步骤 4B: 克拉克森风格", self.gen_step_4b),
+            ("步骤 4B: 风格化", self.gen_step_4b),
         ]
 
         for i, (name, cmd) in enumerate(steps):
@@ -135,16 +136,9 @@ class WebUiGui:
         return self.input_text.get(1.0, tk.END).strip()
 
     def gen_step_0(self):
-        prompt = """# Role (角色设定)
-你是一名精通简体中文的专业技术译者，特别擅长将专业的英文学术论文或技术文档转换为通俗易懂的中文科普文章。
-
-# Global Rules (全局规范)
-在接下来的对话中，我们将对一段英文文本进行翻译。无论进行到哪一步，你都必须严格遵守以下规范：
-1. **书名处理**：有中文版的用中文版书名；无中文版的直接保留英文书名。
-2. **术语格式**：英文术语首次出现时，若有必要，应使用“HTML（Hypertext Markup Language，超文本标识语言）”的格式，之后可使用简写。
-3. **代码处理**：代码块（Code Block）完全不翻译。代码内的注释需翻译（中英对照）。
-4. **标点符号**：译文必须遵循中文标点符号的使用习惯，严禁照搬英文标点。
-5. **图表**：图题、表题需翻译。"""
+        from subtitle.core.prompts import load_prompt
+        # TODO: Load domain context if available
+        prompt = load_prompt("webui_step_0").format(domain_context="")
         self.set_output(prompt)
 
     def gen_step_1(self):
@@ -207,82 +201,34 @@ class WebUiGui:
                 traceback.print_exc()
                 self.status_var.set(f"识别出错: {e}")
 
-        prompt = f"""<任务> 识别用户输入文本中的技术术语和人物全名。请严格按照示例中的格式，展示翻译前后的对应关系。
-{glossary_info}{name_info}
-<注意> 
-1. 除了上述提供的已知译名外，请自行识别文本中出现的其他重要人物、地名或技术词汇。
-2. 即使我没有提供译名的人名，也请你在表格中列出并给出你认为最准确的中文翻译。
-
-<示例>
-| 英文 | 中文 |
-| --- | --- |
-| Prompt Engineering | 提示词工程 |
-| Jeremy Clarkson | 杰里米·克拉克森 |
-| Context | 上下文 |
-
-<输入文本> 
-{content}"""
+        from subtitle.core.prompts import load_prompt
+        prompt_template = load_prompt("webui_step_1")
+        prompt = prompt_template.format(
+            glossary_info=glossary_info,
+            name_info=name_info,
+            content=content
+        )
         self.set_output(prompt)
 
     def gen_step_2(self):
-        prompt = """<任务> 接下来进行第二步：直译。
-
-请参考**上文生成的术语表格**，以及**最开始的输入文本**，进行逐句直译。
-
-<限制> 
-1. 维持原有的段落格式，不省略任何信息。
-2. 优先保证准确性，暂不需要过度润色。
-3. 遇到上文表格中的术语，请严格按照表格对应的中文进行翻译。
-
-请直接输出直译结果："""
+        from subtitle.core.prompts import load_prompt
+        prompt = load_prompt("webui_step_2")
         self.set_output(prompt)
 
     def gen_step_3(self):
-        prompt = """<任务> 接下来进行第三步：审校找茬。
-
-请作为审校专家，检查**刚刚生成的直译文本**，结合**英文原文**，指出其中具体存在的问题。
-
-<检查标准>
-1. **表达习惯**：指出不符合中文表达习惯或句子结构笨拙的位置。
-2. **规范检查**：
-   - 人名是否保留英文（除众所周知外）？
-   - 书名是否有中文版？无中文版需保留英文。
-   - 首次出现的英文术语是否使用了“HTML格式”？
-   - 标点符号是否已转换为中文标点？
-3. **代码与图表**：检查代码注释是否翻译，代码本体是否保留。
-4. **注释规划**：找出文中需要添加“译者注”的地方。
-
-<输出要求>
-1. 列出具体的问题清单。
-2. 列出**拟添加注释的清单**（格式：原文词汇 -> 拟解释内容）。"""
+        from subtitle.core.prompts import load_prompt
+        prompt = load_prompt("webui_step_3")
         self.set_output(prompt)
 
     def gen_step_4a(self):
-        prompt = """<任务> 接下来进行第四步：最终意译。
-
-请基于**上一步指出的问题清单**，对**之前的直译文本**进行修正和润色。
-
-<要求>
-1. **风格调整**：将语风转化为“通俗易懂的科普文章”。
-2. **问题修正**：必须逐一解决上文指出的所有问题。
-3. **格式保留**：保持原有的段落和结构不变。
-4. **输出限制**：**只输出最终的翻译文本**。
-5. **插入注释**：在正文中需要解释的地方插入 [注x] 标记，并在文末列出。
-
-请输出最终翻译结果："""
+        from subtitle.core.prompts import load_prompt
+        prompt = load_prompt("webui_step_4a")
         self.set_output(prompt)
 
     def gen_step_4b(self):
-        prompt = """<任务> 最终意译（克拉克森特调版 + 客观注释）。
-
-<核心指令>
-原文作者是 **Jeremy Clarkson**，他的风格是：**尖酸刻薄、极度夸张、英式幽默、充满比喻**。
-
-<角色分离设定>
-1. **正文部分**：请完全沉浸在 **Jeremy Clarkson** 的角色中，用第一人称（“我”）进行翻译，风格要辛辣、口语化。
-2. **注释部分**：请切换回 **客观译者** 的身份（第三人称）。
-
-请输出最终翻译结果："""
+        from subtitle.core.prompts import load_prompt
+        # TODO: Load domain context if available
+        prompt = load_prompt("webui_step_4b").format(domain_context="")
         self.set_output(prompt)
 
 if __name__ == "__main__":

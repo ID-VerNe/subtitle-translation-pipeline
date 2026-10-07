@@ -9,6 +9,7 @@ from typing import Any
 PROMPT_VERSION = "v2.2"  # 提示词版本
 SCHEMA_VERSION = "20260521"  # 缓存数据结构版本
 
+# @lat: [[core-common#Key Concepts#缓存工具（cache_utils.py）]]
 def canonical_json(obj: Any) -> str:
     """
     生成缓存友好的稳定 JSON 字符串。
@@ -25,6 +26,7 @@ def canonical_json(obj: Any) -> str:
     )
 
 
+# @lat: [[core-common#Key Concepts#缓存工具（cache_utils.py）]]
 def file_fingerprint(path: str) -> str:
     """
     基于文件内容生成 hash，而不是基于文件名。
@@ -42,6 +44,7 @@ def file_fingerprint(path: str) -> str:
     return h.hexdigest()
 
 
+# @lat: [[core-common#Key Concepts#缓存工具（cache_utils.py）]]
 def build_file_cache_key(
     input_file: str,
     target_lang: str,
@@ -63,6 +66,7 @@ def build_file_cache_key(
     return hashlib.md5(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
+# @lat: [[core-common#Key Concepts#缓存工具（cache_utils.py）]]
 def get_cache_path(
     input_file: str,
     purpose: str,
@@ -88,6 +92,7 @@ def get_cache_path(
     return os.path.join(CACHE_DIR, cache_filename)
 
 
+# @lat: [[core-common#Key Concepts#缓存工具（cache_utils.py）]]
 def build_request_cache_key(model_name: str, payload: dict) -> str:
     """
     构建请求级缓存 Key。用于具体的 LLM 请求/响应缓存。
@@ -99,6 +104,7 @@ def build_request_cache_key(model_name: str, payload: dict) -> str:
     return hashlib.md5(canonical_json(wrap).encode("utf-8")).hexdigest()
 
 
+# @lat: [[core-common#Key Concepts#缓存工具（cache_utils.py）]]
 def load_json_file(path: str, default=None):
     if not os.path.exists(path):
         return default
@@ -109,6 +115,7 @@ def load_json_file(path: str, default=None):
         return default
 
 
+# @lat: [[core-common#Key Concepts#缓存工具（cache_utils.py）]]
 def save_json_file(path: str, data: Any, pretty: bool = True):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:

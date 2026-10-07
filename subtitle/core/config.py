@@ -24,8 +24,9 @@ NAMES_DB_PATH = os.path.join(GLOSSARY_DIR, 'names_translation.db')
 LLM_DISCOVERY_DB_PATH = os.path.join(BASE_DIR, 'llm_discovery.db')
 LLM_DISCOVERY_CN_DB_PATH = os.path.join(BASE_DIR, 'llm_discovery_cn.db')
 
+# @lat: [[core-common#Key Concepts#配置体系（config.py）]]
 def load_presets():
-    """从文件加载预设，如果文件不存在则尝试从 .env 转换（过渡期）"""
+    """从 presets.json 加载配置预设"""
     if not os.path.exists(PRESETS_FILE) and os.path.exists(PRESETS_EXAMPLE):
         import shutil
         try:
@@ -42,6 +43,7 @@ def load_presets():
             print(f"加载预设失败: {e}")
     return {}
 
+# @lat: [[core-common#Key Concepts#配置体系（config.py）]]
 def save_presets(presets):
     """将预设保存到文件"""
     try:
@@ -50,6 +52,7 @@ def save_presets(presets):
     except Exception as e:
         print(f"保存预设失败: {e}")
 
+# @lat: [[core-common#Key Concepts#配置体系（config.py）]]
 @dataclass
 class TranslationConfig:
     # --- API 配置 ---
@@ -74,7 +77,19 @@ class TranslationConfig:
     # --- 容错配置 ---
     max_retries: int = 3
     retry_delay: float = 2.0
-    max_tokens: int = 4096
+    max_tokens: int = 8192
+
+    # --- 上下文预算 (1M 上下文模型) ---
+    # 输入上下文预算（远低于 1M 留余量），用于估算单批可塞多少行/记忆。
+    # 当前为软约束占位，pipeline 据此决定 recent_state 行数与 batch 上限。
+    context_budget_tokens: int = 200000
+    # 跨 batch 记忆锚点行数（原硬编码 2 行，1M 上下文下拉到 25-30）
+    max_previous_lines: int = 25
+
+    # --- 推理力度 (支持 reasoning_effort 的模型，如 SenseNova) ---
+    # 可选: low / medium / high / none。空字符串表示不传该字段（模型默认行为）。
+    # 输出慢的推理模型设为 "none" 可跳过 reasoning 阶段，大幅降低延迟。
+    reasoning_effort: str = ""
     
     # --- 语料库配置 ---
     glossary_dir: str = GLOSSARY_DIR
@@ -87,9 +102,14 @@ class TranslationConfig:
     target_lang: str = "zh" 
     
     # --- LLM 温度配置 ---
+    pass_temperature: bool = True
     temp_terms: float = 0.1
     temp_literal: float = 0.3
     temp_polish: float = 0.5
+
+    # --- Claude Code CLI / Codex TUI 模仿模式 ---
+    claude_cli_mode: bool = False
+    codex_mode: bool = False
 
     def __post_init__(self):
         # 尝试从 presets.json 加载
@@ -107,25 +127,33 @@ class TranslationConfig:
                 data = next(iter(valid_presets.values()))
 
         if data:
-            self.api_key = os.getenv("LLM_API_KEY", data.get("api_key", self.api_key))
-            self.api_url = os.getenv("LLM_API_URL", data.get("api_url", self.api_url))
-            self.model_name = os.getenv("LLM_MODEL_NAME", data.get("model_name", self.model_name))
-            
-            self.max_concurrent_requests = int(os.getenv("MAX_CONCURRENT_REQUESTS", data.get("max_concurrent", data.get("max_concurrent_requests", self.max_concurrent_requests))))
-            self.rpm_limit = int(os.getenv("RPM_LIMIT", data.get("rpm_limit", self.rpm_limit)))
-            self.batch_size = int(os.getenv("BATCH_SIZE", data.get("batch_size", self.batch_size)))
-            
-            self.max_retries = int(os.getenv("MAX_RETRIES", data.get("max_retries", self.max_retries)))
-            self.retry_delay = float(os.getenv("RETRY_DELAY", data.get("retry_delay", self.retry_delay)))
-            self.max_tokens = int(os.getenv("MAX_TOKENS", data.get("max_tokens", self.max_tokens)))
-            
-            self.enable_llm_discovery = str(os.getenv("ENABLE_LLM_DISCOVERY", data.get("enable_discovery", data.get("enable_llm_discovery", self.enable_llm_discovery)))).lower() == "true"
-            self.enable_names_db = str(os.getenv("ENABLE_NAMES_DB", data.get("enable_names_db", self.enable_names_db))).lower() == "true"
-            
-            self.temp_terms = float(os.getenv("TEMP_TERMS", data.get("temp_terms", self.temp_terms)))
-            self.temp_literal = float(os.getenv("TEMP_LITERAL", data.get("temp_literal", self.temp_literal)))
-            self.temp_polish = float(os.getenv("TEMP_POLISH", data.get("temp_polish", self.temp_polish)))
-            self.target_lang = os.getenv("TARGET_LANG", data.get("target_lang", self.target_lang))
+            self.api_key = data.get("api_key", self.api_key)
+            self.api_url = data.get("api_url", self.api_url)
+            self.model_name = data.get("model_name", self.model_name)
+
+            self.max_concurrent_requests = int(data.get("max_concurrent", data.get("max_concurrent_requests", self.max_concurrent_requests)))
+            self.rpm_limit = int(data.get("rpm_limit", self.rpm_limit))
+            self.tpm_limit = int(data.get("tpm_limit", self.tpm_limit))
+            self.batch_size = int(data.get("batch_size", self.batch_size))
+
+            self.max_retries = int(data.get("max_retries", self.max_retries))
+            self.retry_delay = float(data.get("retry_delay", self.retry_delay))
+            self.max_tokens = int(data.get("max_tokens", self.max_tokens))
+
+            self.context_budget_tokens = int(data.get("context_budget_tokens", self.context_budget_tokens))
+            self.max_previous_lines = int(data.get("max_previous_lines", self.max_previous_lines))
+            self.reasoning_effort = data.get("reasoning_effort", self.reasoning_effort)
+
+            self.enable_llm_discovery = str(data.get("enable_discovery", data.get("enable_llm_discovery", self.enable_llm_discovery))).lower() == "true"
+            self.enable_names_db = str(data.get("enable_names_db", self.enable_names_db)).lower() == "true"
+
+            self.pass_temperature = str(data.get("pass_temperature", self.pass_temperature)).lower() == "true"
+            self.temp_terms = float(data.get("temp_terms", self.temp_terms))
+            self.temp_literal = float(data.get("temp_literal", self.temp_literal))
+            self.temp_polish = float(data.get("temp_polish", self.temp_polish))
+            self.target_lang = data.get("target_lang", self.target_lang)
+            self.claude_cli_mode = str(data.get("claude_cli_mode", self.claude_cli_mode)).lower() == "true"
+            self.codex_mode = str(data.get("codex_mode", self.codex_mode)).lower() == "true"
 
         # 处理多 API Key 情况 (逗号分隔)
         self.api_keys = [k.strip() for k in self.api_key.split(",") if k.strip()]
@@ -144,6 +172,7 @@ class TranslationConfig:
         os.makedirs(self.glossary_dir, exist_ok=True)
         os.makedirs(CACHE_DIR, exist_ok=True)
 
+# @lat: [[core-common#Key Concepts#配置体系（config.py）]]
 def clear_cache():
     """清理统一的缓存目录以及可能残留的旧缓存目录"""
     import shutil
@@ -159,11 +188,12 @@ def clear_cache():
     
     return True
 
+# @lat: [[core-common#Key Concepts#配置体系（config.py）]]
 def save_config_to_presets(config_dict: dict, preset_name: str = "Default"):
-    """将配置字典保存到 presets.json 中"""
+    """将配置字典保存到 presets.json 中，只更新提供的字段，保留未在 GUI 中展示的字段"""
     presets = load_presets()
     
-    # 映射键名 (将 .env 风格映射到 json 风格)
+    # 映射表
     mapping = {
         "LLM_API_KEY": "api_key",
         "LLM_API_URL": "api_url",
@@ -174,11 +204,17 @@ def save_config_to_presets(config_dict: dict, preset_name: str = "Default"):
         "MAX_RETRIES": "max_retries",
         "RETRY_DELAY": "retry_delay",
         "MAX_TOKENS": "max_tokens",
+        "PASS_TEMPERATURE": "pass_temperature",
         "TEMP_TERMS": "temp_terms",
         "TEMP_LITERAL": "temp_literal",
         "TEMP_POLISH": "temp_polish",
         "ENABLE_LLM_DISCOVERY": "enable_discovery",
-        "ENABLE_NAMES_DB": "enable_names_db"
+        "ENABLE_NAMES_DB": "enable_names_db",
+        "REASONING_EFFORT": "reasoning_effort",
+        "ENFORCE_CONSISTENCY": "enforce_consistency",
+        "POST_CHECK_PASSES": "post_check_passes",
+        "CONTEXT_BUDGET_TOKENS": "context_budget_tokens",
+        "MAX_PREVIOUS_LINES": "max_previous_lines"
     }
     
     new_preset_data = {}
@@ -186,10 +222,14 @@ def save_config_to_presets(config_dict: dict, preset_name: str = "Default"):
         json_key = mapping.get(k, k.lower())
         new_preset_data[json_key] = v
         
-    presets[preset_name] = new_preset_data
+    if preset_name not in presets:
+        presets[preset_name] = {}
+        
+    presets[preset_name].update(new_preset_data)
     presets["_current"] = preset_name
     save_presets(presets)
 
+# @lat: [[core-common#Key Concepts#配置体系（config.py）]]
 class TranslationArgs:
     def __init__(self, input_file, output_file, bilingual, model_name=None, batch_size=None, target_lang="zh"):
         self.input_file = input_file
@@ -211,11 +251,17 @@ class TranslationArgs:
         self.max_retries = config.max_retries
         self.retry_delay = config.retry_delay
         self.max_tokens = config.max_tokens
+        self.context_budget_tokens = config.context_budget_tokens
+        self.max_previous_lines = config.max_previous_lines
+        self.reasoning_effort = config.reasoning_effort
         
+        self.pass_temperature = config.pass_temperature
         self.temp_terms = config.temp_terms
         self.temp_literal = config.temp_literal
         self.temp_polish = config.temp_polish
         self.enable_llm_discovery = config.enable_llm_discovery
         self.enable_names_db = config.enable_names_db
+        self.claude_cli_mode = config.claude_cli_mode
+        self.codex_mode = config.codex_mode
         self.progress_file = None
         self.glossary_cache_file = None

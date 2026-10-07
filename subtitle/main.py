@@ -17,6 +17,7 @@ from translate_srt_llm import run_translation
 # 动态加载子模块
 import importlib.util
 
+# @lat: [[entries#Key Concepts#CLI 总控入口（main.py）]]
 def load_module(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
@@ -38,6 +39,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("MainWorkflow")
 
+# @lat: [[entries#Key Concepts#CLI 总控入口（main.py）]]
 async def main():
     parser = argparse.ArgumentParser(description="字幕翻译一站式工具 - 从 MKV 到最终版字幕")
     
@@ -91,7 +93,6 @@ async def main():
             input_file=working_srt,
             purpose="translated",
             target_lang=target_lang,
-            model_name=args.model or "",
             extension=".srt"
         )
     else:

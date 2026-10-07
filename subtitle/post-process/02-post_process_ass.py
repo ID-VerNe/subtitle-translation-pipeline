@@ -63,24 +63,31 @@ def clean_single_line(text):
     """
     text = text.replace('，', ' ').replace('。', ' ')
     text = text.replace(r'\N', ' ')
+    
+    # 修复因为移除括号内容可能留下的双横杠
+    text = re.sub(r'-\s*-+', '-', text)
+    
+    # 彻底移除原有的 ASS 标签 (例如 {\an8})，避免在后面被重复叠加或漏出
+    text = re.sub(r'\{.*?\}', '', text)
+    
+    # 移除 ASS 标签后检查是否只剩下横杠，如果是，则返回空字符串
+    if not text.strip('-— \t'):
+        return ""
+        
     return text.strip()
 
+# @lat: [[media-process#Key Concepts#智能分行（process_block_content）]]
 def detect_language_style(text):
     """
     简单的语言检测：
-    - 如果文本主要是专有名词+解释，判定为注释
     - 包含中文字符则认为是中文
     - 否则是英文
+    （注释识别由时间戳分组逻辑处理）
     """
-    # 检测是否为注释：包含大写字母开头的专有词 + 中文解释
-    # 例如：LAMMA（林肯郡农机制造商协会）英国年度最大农机展
-    if re.match(r'^[A-Z][A-Za-z0-9\s\-\'\.]*[\(（]', text):
-        return "注释"
-    
-    # 常规语言检测
     is_chinese = any('\u4e00' <= char <= '\u9fff' for char in text)
     return "中文" if is_chinese else "英文"
 
+# @lat: [[media-process#Key Concepts#智能分行（process_block_content）]]
 def process_block_content(content):
     """
     核心逻辑：将一个字幕块的内容按语言分组
@@ -115,6 +122,7 @@ def process_block_content(content):
         
     return groups
 
+# @lat: [[media-process#Key Concepts#ASS 生成（srt_to_ass）]]
 def srt_to_ass(srt_path, ass_head_path, output_path=None):
     if not os.path.exists(srt_path):
         print(f"错误：找不到 SRT 文件 {srt_path}")
@@ -137,6 +145,12 @@ def srt_to_ass(srt_path, ass_head_path, output_path=None):
     blocks = parse_srt(srt_path)
     print(f"共找到 {len(blocks)} 条字幕块")
     
+    # 按时间戳分组
+    from collections import defaultdict
+    timestamp_groups = defaultdict(list)
+    for block in blocks:
+        timestamp_groups[block['timestamp']].append(block)
+    
     # 3. 生成 ASS
     print("正在进行智能分行转换...")
     with open(output_path, 'w', encoding='utf-8') as f:
@@ -145,26 +159,35 @@ def srt_to_ass(srt_path, ass_head_path, output_path=None):
             f.write('\n')
             
         count = 0
-        for block in blocks:
-            if '-->' not in block['timestamp']:
+        for timestamp in sorted(timestamp_groups.keys()):
+            group = timestamp_groups[timestamp]
+            
+            if '-->' not in timestamp:
                 continue
                 
-            start_raw, end_raw = block['timestamp'].split(' --> ')
+            start_raw, end_raw = timestamp.split(' --> ')
             ass_start = srt_time_to_ass(start_raw.strip())
             ass_end = srt_time_to_ass(end_raw.strip())
             
-            event_groups = process_block_content(block['content'])
-            
-            for text, style in event_groups:
-                # 根据样式设置不同的特效代码
-                if style == "注释":
-                    # 注释使用 \be6 特效
-                    dialogue_line = f"Dialogue: 0,{ass_start},{ass_end},{style},,0,0,0,,{{\\be6}}{text}\n"
-                else:
-                    # 中英文使用 \be3 特效
-                    dialogue_line = f"Dialogue: 0,{ass_start},{ass_end},{style},,0,0,0,,{{\\be3}}{text}\n"
-                f.write(dialogue_line)
-                count += 1
+            for idx, block in enumerate(group):
+                event_groups = process_block_content(block['content'])
+                
+                for text, detected_style in event_groups:
+                    # 按位置确定样式：第1个块英文，第2个块中文，第3个及以后注释
+                    if idx == 0:
+                        style = "英文"
+                    elif idx == 1:
+                        style = "中文"
+                    else:
+                        style = "注释"
+                    
+                    # 根据样式设置不同的特效代码
+                    if style == "注释":
+                        dialogue_line = f"Dialogue: 0,{ass_start},{ass_end},{style},,0,0,0,,{{\\be6}}{text}\n"
+                    else:
+                        dialogue_line = f"Dialogue: 0,{ass_start},{ass_end},{style},,0,0,0,,{{\\be3}}{text}\n"
+                    f.write(dialogue_line)
+                    count += 1
             
     print(f"转换成功！生成文件: {output_path} (共生成 {count} 条 ASS 事件)")
 
